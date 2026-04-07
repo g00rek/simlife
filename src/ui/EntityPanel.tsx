@@ -82,7 +82,9 @@ export function EntityPanel({ entity, onClose }: EntityPanelProps) {
       </div>
       <div style={rowStyle}>
         <span style={dimStyle}>Tribe:</span>
-        <span>{['Red', 'Green', 'Blue'][entity.tribe] ?? 'Ronin'}</span>
+        <span style={{ color: entity.tribe === -1 ? '#ff9e64' : '#ccc' }}>
+          {entity.tribe === -1 ? '⚠ Ronin' : ['Red', 'Green', 'Blue'][entity.tribe]}
+        </span>
       </div>
       <div style={rowStyle}>
         <span style={dimStyle}>Position:</span>

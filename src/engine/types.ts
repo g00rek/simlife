@@ -18,7 +18,7 @@ export interface Traits {
   twinChance: number;   // 0-1: chance of multiple births (0=always single, 1=always multiples)
 }
 
-export type TribeId = 0 | 1 | 2;
+export type TribeId = -1 | 0 | 1 | 2; // -1 = ronin (tribeless)
 
 export interface Village {
   tribe: TribeId;
@@ -43,6 +43,7 @@ export interface Entity {
   tribe: TribeId;
   partnerTraits?: Traits;
   partnerColor?: RGB;
+  partnerTribe?: TribeId;
 }
 
 export const MEAT_PORTIONS_PER_HUNT = 8;

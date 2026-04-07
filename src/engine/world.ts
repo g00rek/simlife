@@ -352,7 +352,7 @@ function detectInteractions(
         for (let j = i + 1; j < fightableMales.length && !fightStarted; j++) {
           const m1 = fightableMales[i];
           const m2 = fightableMales[j];
-          if (m1.tribe !== m2.tribe) {
+          if (m1.tribe !== m2.tribe || m1.tribe === -1 || m2.tribe === -1) {
             const m1Fights = Math.random() < m1.traits.aggression / 10;
             const m2Fights = Math.random() < m2.traits.aggression / 10;
             if (m1Fights && m2Fights) {
@@ -500,7 +500,8 @@ export function tick(state: WorldState): WorldState {
             energy: ENERGY_START,
             traits: babyTraits,
             meat: 0,
-            tribe: mother.tribe,
+            // Same tribe parents → child in tribe. Mixed → ronin (-1)
+            tribe: (mother.partnerTribe === mother.tribe ? mother.tribe : -1) as TribeId,
           });
           const baby = babies[babies.length - 1];
           log.push({ tick: tickNum, type: 'birth', entityId: baby.id, gender: baby.gender, age: 0 });
@@ -587,6 +588,7 @@ export function tick(state: WorldState): WorldState {
             meat,
             partnerTraits: malePartner?.traits ?? e.traits,
             partnerColor: malePartner?.color ?? e.color,
+            partnerTribe: malePartner?.tribe ?? e.tribe,
           };
         } else if (e.state === 'pregnant') {
           // Birth handled above, just go idle and clear partner data
