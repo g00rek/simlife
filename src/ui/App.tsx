@@ -21,8 +21,6 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   interface HistoryPoint {
     pop: number[];       // population per tribe [0,1,2,ronin]
-    meat: number[];      // pantry meat per village [0,1,2]
-    plant: number[];     // pantry plant per village [0,1,2]
   }
   const [history, setHistory] = useState<HistoryPoint[]>([]);
 
@@ -35,9 +33,7 @@ export function App() {
       if (next.tick % POP_SAMPLE_INTERVAL === 0) {
         setHistory(h => {
           const pop = [0, 1, 2, -1].map(t => next.entities.filter(e => e.tribe === t).length);
-          const meat = next.villages.map(v => v.meatStore);
-          const plant = next.villages.map(v => v.plantStore);
-          const updated = [...h, { pop, meat, plant }];
+          const updated = [...h, { pop }];
           return updated.length > 200 ? updated.slice(-200) : updated;
         });
       }
@@ -144,12 +140,32 @@ export function App() {
               ]} width={290} height={80} />
             </div>
             <div style={graphPanelStyle}>
-              <div style={labelStyle}>Pantry (meat)</div>
-              <PopGraph series={[
-                { data: history.map(h => h.meat[0]), color: '#dc3c3c', label: 'Red' },
-                { data: history.map(h => h.meat[1]), color: '#3cb43c', label: 'Grn' },
-                { data: history.map(h => h.meat[2]), color: '#3c64dc', label: 'Blu' },
-              ]} width={290} height={80} />
+              <div style={labelStyle}>Pantry</div>
+              {world.villages.map(v => {
+                const maxStore = 50;
+                const meatPct = Math.min(100, Math.round((v.meatStore / maxStore) * 100));
+                const plantPct = Math.min(100, Math.round((v.plantStore / maxStore) * 100));
+                const c = `rgb(${v.color.join(',')})`;
+                return (
+                  <div key={v.tribe} style={{ marginBottom: '6px' }}>
+                    <div style={{ fontSize: '10px', color: c, marginBottom: '2px' }}>{v.name}</div>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '9px', color: '#8d6e63', width: '12px' }}>&#127830;</span>
+                      <div style={{ flex: 1, height: '6px', background: '#333', borderRadius: '3px' }}>
+                        <div style={{ width: `${meatPct}%`, height: '100%', background: '#8d6e63', borderRadius: '3px' }} />
+                      </div>
+                      <span style={{ fontSize: '9px', color: '#666', width: '20px' }}>{v.meatStore}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '2px' }}>
+                      <span style={{ fontSize: '9px', color: '#4caf50', width: '12px' }}>&#127807;</span>
+                      <div style={{ flex: 1, height: '6px', background: '#333', borderRadius: '3px' }}>
+                        <div style={{ width: `${plantPct}%`, height: '100%', background: '#4caf50', borderRadius: '3px' }} />
+                      </div>
+                      <span style={{ fontSize: '9px', color: '#666', width: '20px' }}>{v.plantStore}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

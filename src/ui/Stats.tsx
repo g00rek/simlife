@@ -83,16 +83,6 @@ export function Stats({ world }: StatsProps) {
         </div>
       </div>
       <div style={panelStyle}>
-        <div style={labelStyle}>Pantries</div>
-        {world.villages.map(v => (
-          <div key={v.tribe} style={{ fontSize: '11px', marginBottom: '2px' }}>
-            <span style={{ color: `rgb(${v.color.join(',')})` }}>{v.name}</span>
-            {' '}<span style={{ color: '#8d6e63' }}>&#127830;{v.meatStore}</span>
-            {' '}<span style={{ color: '#4caf50' }}>&#127807;{v.plantStore}</span>
-          </div>
-        ))}
-      </div>
-      <div style={panelStyle}>
         <div style={labelStyle}>Activities</div>
         <div style={{ fontSize: '11px' }}>
           <div>&#127993; {hunting} hunting</div>
