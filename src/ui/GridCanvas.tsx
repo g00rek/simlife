@@ -8,6 +8,8 @@ const GRID_LINE = '#2a2b36';
 interface GridCanvasProps {
   world: WorldState;
   size: number;
+  selectedId: string | null;
+  onClick: (gridX: number, gridY: number) => void;
 }
 
 function entityColor(entity: Entity): string {
@@ -50,8 +52,18 @@ function drawPerson(
   ctx.fill();
 }
 
-export function GridCanvas({ world, size }: GridCanvasProps) {
+export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const cellSize = size / world.gridSize;
+    const x = Math.floor((e.clientX - rect.left) / cellSize);
+    const y = Math.floor((e.clientY - rect.top) / cellSize);
+    onClick(x, y);
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -125,6 +137,7 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
       color: string; gender: string;
       age: number; state: string;
       energy: number;
+      id: string;
     }
     const draws: DrawData[] = [];
     const tileIcons: Array<{ cx: number; cy: number; icon: string }> = [];
@@ -160,6 +173,7 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
           age: ageInYears(entity),
           state: entity.state,
           energy: entity.energy,
+          id: entity.id,
         });
       }
 
@@ -219,14 +233,30 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
         ctx.fillText(icon, cx, cy - cellSize * 0.42);
       }
     }
-  }, [world, size]);
+
+    // Draw selection highlight
+    if (selectedId) {
+      const sel = draws.find(d => d.id === selectedId);
+      if (sel) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(
+          sel.cx - cellSize * 0.4,
+          sel.cy - cellSize * 0.45,
+          cellSize * 0.8,
+          cellSize * 0.9,
+        );
+      }
+    }
+  }, [world, size, selectedId]);
 
   return (
     <canvas
       ref={canvasRef}
       width={size}
       height={size}
-      style={{ borderRadius: '4px' }}
+      style={{ borderRadius: '4px', cursor: 'pointer' }}
+      onClick={handleClick}
     />
   );
 }

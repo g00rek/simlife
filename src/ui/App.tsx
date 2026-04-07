@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createWorld, tick } from '../engine/world';
 import { GridCanvas } from './GridCanvas';
 import { Stats } from './Stats';
 import { Controls } from './Controls';
+import { EntityPanel } from './EntityPanel';
 import type { WorldState } from '../engine/types';
 
 const CANVAS_SIZE = 900;
@@ -13,8 +14,7 @@ export function App() {
   );
   const [running, setRunning] = useState(false);
   const [speed, setSpeed] = useState(300);
-  const worldRef = useRef(world);
-  worldRef.current = world;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const extinct = world.entities.length === 0 && world.tick > 0;
 
@@ -31,6 +31,25 @@ export function App() {
     return () => clearInterval(interval);
   }, [running, speed, step, extinct]);
 
+  const selectedEntity = selectedId
+    ? world.entities.find(e => e.id === selectedId) ?? null
+    : null;
+
+  // Clear selection if entity died
+  useEffect(() => {
+    if (selectedId && !world.entities.find(e => e.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [world, selectedId]);
+
+  const handleCanvasClick = useCallback((x: number, y: number) => {
+    // Find entity at grid position
+    const entity = world.entities.find(
+      e => e.position.x === x && e.position.y === y
+    );
+    setSelectedId(entity ? entity.id : null);
+  }, [world]);
+
   return (
     <div style={containerStyle}>
       <h1 style={{ margin: '0 0 16px', fontSize: '20px', color: '#ccc' }}>
@@ -42,8 +61,19 @@ export function App() {
         </div>
       )}
       <div style={layoutStyle}>
-        <GridCanvas world={world} size={CANVAS_SIZE} />
+        <GridCanvas
+          world={world}
+          size={CANVAS_SIZE}
+          selectedId={selectedId}
+          onClick={handleCanvasClick}
+        />
         <div style={sidebarStyle}>
+          {selectedEntity && (
+            <EntityPanel
+              entity={selectedEntity}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
           <Stats world={world} />
           <Controls
             running={running}
