@@ -750,20 +750,6 @@ export function tick(state: WorldState): WorldState {
         target = stepToward(entity.position, myVillage.center, biomes, gridSize, entity.tribe, updatedVillages);
       }
 
-      // Priority 0b: Adult male in village + not seeking mate → go hunt
-      if (!target && inOwnVillage && entity.gender === 'male' && !isChild(entity)) {
-        const wantsMate = isReproductive(entity) && entity.energy >= ENERGY_MATING_MIN
-          && (getVillage(entity.tribe)?.meatStore ?? 0) >= PANTRY_MATING_MIN;
-        if (!wantsMate) {
-          // Walk toward edge of village to go hunt
-          const dx = entity.position.x - myVillage!.center.x;
-          const dy = entity.position.y - myVillage!.center.y;
-          const awayX = entity.position.x + Math.sign(dx || (Math.random() < 0.5 ? 1 : -1));
-          const awayY = entity.position.y + Math.sign(dy || (Math.random() < 0.5 ? 1 : -1));
-          const away = { x: awayX, y: awayY };
-          if (isValidMove(away, biomes, gridSize)) target = away;
-        }
-      }
 
       // Priority 1: Outside village → seek food
       if (!target && !isChild(entity) && !inOwnVillage) {
@@ -839,6 +825,16 @@ export function tick(state: WorldState): WorldState {
         if (bestPos) {
           target = stepToward(entity.position, bestPos, biomes, gridSize, entity.tribe, villages);
         }
+      }
+
+      // Priority 2b: Adult male in village, no mate found → go hunt
+      if (!target && inOwnVillage && entity.gender === 'male' && !isChild(entity) && myVillage) {
+        const dx = entity.position.x - myVillage.center.x;
+        const dy = entity.position.y - myVillage.center.y;
+        const awayX = entity.position.x + Math.sign(dx || (Math.random() < 0.5 ? 1 : -1));
+        const awayY = entity.position.y + Math.sign(dy || (Math.random() < 0.5 ? 1 : -1));
+        const away = { x: awayX, y: awayY };
+        if (isValidMove(away, biomes, gridSize)) target = away;
       }
 
       // Priority 3: Random step (only outside village — in village, stay put)
