@@ -1,5 +1,5 @@
 import type { Entity, Position, WorldState, RGB } from './types';
-import { MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE } from './types';
+import { MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR } from './types';
 import { randomStep } from './movement';
 
 interface CreateWorldOptions {
@@ -13,11 +13,17 @@ function generateId(): string {
 }
 
 function randomMaxAge(): number {
-  return 60 + Math.floor(Math.random() * 21); // 60-80
+  // maxAge in ticks (60-80 years × TICKS_PER_YEAR)
+  return (60 + Math.floor(Math.random() * 21)) * TICKS_PER_YEAR;
+}
+
+export function ageInYears(e: Entity): number {
+  return Math.floor(e.age / TICKS_PER_YEAR);
 }
 
 function isReproductive(e: Entity): boolean {
-  return e.age >= MIN_REPRODUCTIVE_AGE && e.age <= MAX_REPRODUCTIVE_AGE;
+  const years = ageInYears(e);
+  return years >= MIN_REPRODUCTIVE_AGE && years <= MAX_REPRODUCTIVE_AGE;
 }
 
 const BASE_COLORS: RGB[] = [
@@ -66,7 +72,7 @@ export function createWorld(options: CreateWorldOptions): WorldState {
       },
       gender: i < entityCount / 2 ? 'male' : 'female',
       state: 'idle',
-      age: Math.floor(Math.random() * 31), // 0-30
+      age: Math.floor(Math.random() * 31) * TICKS_PER_YEAR, // 0-30 years in ticks
       maxAge: randomMaxAge(),
       color: BASE_COLORS[i % 3],
     });

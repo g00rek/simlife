@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import type { WorldState, Entity } from '../engine/types';
+import { ageInYears } from '../engine/world';
 
 const GRID_BG = '#1a1b26';
 const GRID_LINE = '#2a2b36';
@@ -86,7 +87,7 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
           cx, cy,
           color: entityColor(entity),
           gender: entity.gender,
-          age: entity.age,
+          age: ageInYears(entity),
         });
       }
 

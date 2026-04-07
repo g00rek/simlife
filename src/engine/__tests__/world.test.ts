@@ -49,19 +49,19 @@ describe('createWorld', () => {
     }
   });
 
-  it('creates all entities with age 0-30', () => {
+  it('creates all entities with age 0-150 ticks (0-30 years)', () => {
     const world = createWorld({ gridSize: 30, entityCount: 20 });
     for (const entity of world.entities) {
       expect(entity.age).toBeGreaterThanOrEqual(0);
-      expect(entity.age).toBeLessThanOrEqual(30);
+      expect(entity.age).toBeLessThanOrEqual(30 * 5);
     }
   });
 
-  it('creates all entities with maxAge between 60 and 80', () => {
+  it('creates all entities with maxAge between 300 and 400 ticks (60-80 years)', () => {
     const world = createWorld({ gridSize: 30, entityCount: 20 });
     for (const entity of world.entities) {
-      expect(entity.maxAge).toBeGreaterThanOrEqual(60);
-      expect(entity.maxAge).toBeLessThanOrEqual(80);
+      expect(entity.maxAge).toBeGreaterThanOrEqual(60 * 5);
+      expect(entity.maxAge).toBeLessThanOrEqual(80 * 5);
     }
   });
 });
@@ -105,7 +105,7 @@ describe('aging and death', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', age: 0, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', age: 0, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -118,7 +118,7 @@ describe('aging and death', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'dying', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', age: 99, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
+        { id: 'dying', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', age: 100 * 5 - 1, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -132,7 +132,7 @@ describe('aging and death', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', age: 0, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', age: 0, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
       ],
     };
     let current = world;
@@ -149,16 +149,16 @@ describe('aging and death', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25, maxAge: 100, color: [0, 255, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [0, 255, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
     const baby = next.entities.find(e => e.id !== 'e1' && e.id !== 'e2');
     expect(baby).toBeDefined();
     expect(baby?.age).toBe(0);
-    expect(baby?.maxAge).toBeGreaterThanOrEqual(60);
-    expect(baby?.maxAge).toBeLessThanOrEqual(80);
+    expect(baby?.maxAge).toBeGreaterThanOrEqual(60 * 5);
+    expect(baby?.maxAge).toBeLessThanOrEqual(80 * 5);
   });
 });
 
@@ -168,8 +168,8 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 10, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', age: 10, maxAge: 100, color: [0, 255, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 10 * 5, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', age: 10 * 5, maxAge: 100 * 5, color: [0, 255, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -184,8 +184,8 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 55, maxAge: 80, color: [255, 0, 0] as [number, number, number] },
-        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', age: 55, maxAge: 80, color: [0, 255, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 55 * 5, maxAge: 80 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', age: 55 * 5, maxAge: 80 * 5, color: [0, 255, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -200,8 +200,8 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 25, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', age: 25, maxAge: 100, color: [0, 255, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 25 * 5, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', age: 25 * 5, maxAge: 100 * 5, color: [0, 255, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -216,8 +216,8 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 0, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'e2', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 0, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 0, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e2', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 0, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -232,8 +232,8 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25, maxAge: 100, color: [0, 255, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [0, 255, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -257,8 +257,8 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25, maxAge: 100, color: [0, 255, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [0, 255, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -270,8 +270,8 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25, maxAge: 100, color: [0, 255, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [0, 255, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -287,8 +287,8 @@ describe('mating', () => {
         gridSize: 30,
         tick: 0,
         entities: [
-          { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-          { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25, maxAge: 100, color: [0, 255, 0] as [number, number, number] },
+          { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+          { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [0, 255, 0] as [number, number, number] },
         ],
       };
       const next = tick(world);
@@ -304,8 +304,8 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25, maxAge: 100, color: [0, 255, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [0, 255, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -324,8 +324,8 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       entities: [
-        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25, maxAge: 100, color: [0, 255, 0] as [number, number, number] },
+        { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', age: 25 * 5, maxAge: 100 * 5, color: [0, 255, 0] as [number, number, number] },
       ],
     };
     const next = tick(world);
@@ -342,9 +342,9 @@ describe('mating', () => {
       gridSize: 10,
       tick: 0,
       entities: [
-        { id: 'blocker1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 0, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'blocker2', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 0, maxAge: 100, color: [255, 0, 0] as [number, number, number] },
-        { id: 'mover', position: { x: 4, y: 5 }, gender: 'female', state: 'idle', age: 0, maxAge: 100, color: [0, 255, 0] as [number, number, number] },
+        { id: 'blocker1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 0, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'blocker2', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', age: 0, maxAge: 100 * 5, color: [255, 0, 0] as [number, number, number] },
+        { id: 'mover', position: { x: 4, y: 5 }, gender: 'female', state: 'idle', age: 0, maxAge: 100 * 5, color: [0, 255, 0] as [number, number, number] },
       ],
     };
     // Run tick multiple times and verify no tile ever has 3+ entities

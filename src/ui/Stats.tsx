@@ -1,4 +1,6 @@
 import type { WorldState } from '../engine/types';
+import { TICKS_PER_YEAR } from '../engine/types';
+import { ageInYears } from '../engine/world';
 
 interface StatsProps {
   world: WorldState;
@@ -9,8 +11,9 @@ export function Stats({ world }: StatsProps) {
   const females = world.entities.filter(e => e.gender === 'female').length;
   const mating = world.entities.filter(e => e.state === 'mating').length;
   const avgAge = world.entities.length > 0
-    ? Math.round(world.entities.reduce((sum, e) => sum + e.age, 0) / world.entities.length)
+    ? Math.round(world.entities.reduce((sum, e) => sum + ageInYears(e), 0) / world.entities.length)
     : 0;
+  const year = Math.floor(world.tick / TICKS_PER_YEAR);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -31,8 +34,9 @@ export function Stats({ world }: StatsProps) {
         )}
       </div>
       <div style={panelStyle}>
-        <div style={labelStyle}>Tura (rok)</div>
-        <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{world.tick}</div>
+        <div style={labelStyle}>Rok / Tura</div>
+        <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{year}</div>
+        <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>tura {world.tick}</div>
       </div>
       <div style={panelStyle}>
         <div style={labelStyle}>Średni wiek</div>
