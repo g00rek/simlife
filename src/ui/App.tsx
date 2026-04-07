@@ -69,6 +69,10 @@ export function App() {
       `  Starvation: ${byStarvation}`,
       `  Fight: ${byFight}`,
       ``,
+      `--- WORLD STATE AT EXTINCTION ---`,
+      `Animals remaining: ${world.animals.length}`,
+      `Plants remaining: ${world.plants.length}`,
+      ``,
       `--- FULL LOG ---`,
       ...log.map(e => {
         const y = Math.floor(e.tick / TICKS_PER_YEAR);

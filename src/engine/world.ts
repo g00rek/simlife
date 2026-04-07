@@ -6,7 +6,7 @@ import {
   ENERGY_MATING_MIN, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   BASE_FOOD_SENSE_RANGE, ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
   PLANT_GROW_TIME, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
-  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS,
+  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS,
 } from './types';
 import { generateBiomeGrid, isPassable } from './biomes';
 // randomStep from movement.ts still used by randomStepBiome as fallback concept
@@ -497,12 +497,32 @@ export function tick(state: WorldState): WorldState {
   animals = animals.filter(a => !consumedAnimalIds.has(a.id));
   plants = plants.filter(p => !consumedPlantIds.has(p.id));
 
-  // --- Step 1b: Move animals + tick cooldowns ---
-  animals = animals.map(a => ({
-    ...a,
-    position: randomStepBiome(a.position, gridSize, biomes),
-    reproTimer: Math.max(0, a.reproTimer - 1),
-  }));
+  // --- Step 1b: Move animals (flee from humans) + tick cooldowns ---
+  animals = animals.map(a => {
+    let newPos: Position;
+    // Check for nearest human within flee range
+    let nearestHumanDist = ANIMAL_FLEE_RANGE + 1;
+    let nearestHumanPos: Position | null = null;
+    for (const e of entities) {
+      const d = manhattan(a.position, e.position);
+      if (d > 0 && d <= ANIMAL_FLEE_RANGE && d < nearestHumanDist) {
+        nearestHumanDist = d;
+        nearestHumanPos = e.position;
+      }
+    }
+    if (nearestHumanPos) {
+      // Flee: step away from human
+      const dx = a.position.x - nearestHumanPos.x;
+      const dy = a.position.y - nearestHumanPos.y;
+      const flee = Math.abs(dx) >= Math.abs(dy)
+        ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
+        : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
+      newPos = isValidMove(flee, biomes, gridSize) ? flee : randomStepBiome(a.position, gridSize, biomes);
+    } else {
+      newPos = randomStepBiome(a.position, gridSize, biomes);
+    }
+    return { ...a, position: newPos, reproTimer: Math.max(0, a.reproTimer - 1) };
+  });
 
   // --- Step 1c: Reproduce animals (two ready on same tile → offspring) ---
   if (animals.length < ANIMAL_MAX) {
