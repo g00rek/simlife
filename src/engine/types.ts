@@ -50,7 +50,7 @@ export interface Entity {
   partnerTribe?: TribeId;
 }
 
-export const MEAT_PORTIONS_PER_HUNT = 8;
+export const MEAT_PORTIONS_PER_HUNT = 20;
 
 // Traits
 export const TRAIT_ENERGY_COST = 0.15; // extra energy drain per total trait points above baseline
