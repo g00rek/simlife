@@ -3,15 +3,19 @@ interface ControlsProps {
   speed: number;
   onToggle: () => void;
   onSpeedChange: (speed: number) => void;
+  onReset: () => void;
 }
 
-export function Controls({ running, speed, onToggle, onSpeedChange }: ControlsProps) {
+export function Controls({ running, speed, onToggle, onSpeedChange, onReset }: ControlsProps) {
   return (
     <div style={panelStyle}>
       <div style={labelStyle}>Controls</div>
-      <button onClick={onToggle} style={buttonStyle(running)}>
-        {running ? '⏸ Pause' : '▶ Play'}
-      </button>
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <button onClick={onToggle} style={{ ...buttonStyle(running), flex: 1 }}>
+          {running ? '⏸ Pause' : '▶ Play'}
+        </button>
+        <button onClick={onReset} style={resetStyle}>↻</button>
+      </div>
       <div style={{ marginTop: '12px' }}>
         <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>
           Speed: {speed}ms
@@ -42,6 +46,16 @@ const labelStyle: React.CSSProperties = {
   fontSize: '11px',
   textTransform: 'uppercase',
   marginBottom: '8px',
+};
+
+const resetStyle: React.CSSProperties = {
+  background: '#f7768e33',
+  color: '#f7768e',
+  border: '1px solid #f7768e55',
+  padding: '6px 10px',
+  borderRadius: '4px',
+  fontSize: '16px',
+  cursor: 'pointer',
 };
 
 function buttonStyle(running: boolean): React.CSSProperties {

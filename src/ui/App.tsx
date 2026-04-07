@@ -108,6 +108,13 @@ export function App() {
     setSelectedId(entity ? entity.id : null);
   }, [world]);
 
+  const handleReset = useCallback(() => {
+    setWorld(createWorld({ gridSize: 50, entityCount: 21 }));
+    setRunning(false);
+    setSelectedId(null);
+    setHistory([]);
+  }, []);
+
   return (
     <div style={containerStyle}>
       <h1 style={{ margin: '0 0 16px', fontSize: '20px', color: '#ccc' }}>
@@ -119,12 +126,33 @@ export function App() {
         </div>
       )}
       <div style={layoutStyle}>
-        <GridCanvas
-          world={world}
-          size={CANVAS_SIZE}
-          selectedId={selectedId}
-          onClick={handleCanvasClick}
-        />
+        <div>
+          <GridCanvas
+            world={world}
+            size={CANVAS_SIZE}
+            selectedId={selectedId}
+            onClick={handleCanvasClick}
+          />
+          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+            <div style={graphPanelStyle}>
+              <div style={labelStyle}>Population</div>
+              <PopGraph series={[
+                { data: history.map(h => h.pop[0]), color: '#dc3c3c', label: 'Red' },
+                { data: history.map(h => h.pop[1]), color: '#3cb43c', label: 'Grn' },
+                { data: history.map(h => h.pop[2]), color: '#3c64dc', label: 'Blu' },
+                { data: history.map(h => h.pop[3]), color: '#b48c3c', label: 'Ron' },
+              ]} width={290} height={80} />
+            </div>
+            <div style={graphPanelStyle}>
+              <div style={labelStyle}>Pantry (meat)</div>
+              <PopGraph series={[
+                { data: history.map(h => h.meat[0]), color: '#dc3c3c', label: 'Red' },
+                { data: history.map(h => h.meat[1]), color: '#3cb43c', label: 'Grn' },
+                { data: history.map(h => h.meat[2]), color: '#3c64dc', label: 'Blu' },
+              ]} width={290} height={80} />
+            </div>
+          </div>
+        </div>
         <div style={sidebarStyle}>
           {selectedEntity && (
             <EntityPanel
@@ -133,29 +161,13 @@ export function App() {
             />
           )}
           <Stats world={world} />
-          <div style={{ background: '#1a1b26', border: '1px solid #333', borderRadius: '4px', padding: '12px' }}>
-            <div style={labelStyle}>Population</div>
-            <PopGraph series={[
-              { data: history.map(h => h.pop[0]), color: '#dc3c3c', label: 'Red' },
-              { data: history.map(h => h.pop[1]), color: '#3cb43c', label: 'Grn' },
-              { data: history.map(h => h.pop[2]), color: '#3c64dc', label: 'Blu' },
-              { data: history.map(h => h.pop[3]), color: '#b48c3c', label: 'Ron' },
-            ]} width={176} height={60} />
-          </div>
-          <div style={{ background: '#1a1b26', border: '1px solid #333', borderRadius: '4px', padding: '12px' }}>
-            <div style={labelStyle}>Pantry (meat)</div>
-            <PopGraph series={[
-              { data: history.map(h => h.meat[0]), color: '#dc3c3c', label: 'Red' },
-              { data: history.map(h => h.meat[1]), color: '#3cb43c', label: 'Grn' },
-              { data: history.map(h => h.meat[2]), color: '#3c64dc', label: 'Blu' },
-            ]} width={176} height={50} />
-          </div>
           <TraitAverages entities={world.entities} />
           <Controls
             running={running}
             speed={speed}
             onToggle={() => setRunning(r => !r)}
             onSpeedChange={setSpeed}
+            onReset={handleReset}
           />
         </div>
       </div>
@@ -189,4 +201,12 @@ const labelStyle: React.CSSProperties = {
   fontSize: '11px',
   textTransform: 'uppercase',
   marginBottom: '8px',
+};
+
+const graphPanelStyle: React.CSSProperties = {
+  background: '#1a1b26',
+  border: '1px solid #333',
+  borderRadius: '4px',
+  padding: '12px',
+  flex: 1,
 };

@@ -65,7 +65,7 @@ export interface Animal {
 export const ANIMAL_REPRO_INTERVAL = 10; // ticks between reproduction attempts
 export const ANIMAL_REPRO_RANGE = 2;     // max animals on nearby tiles to reproduce
 export const ANIMAL_MAX = 40;            // carrying capacity
-export const ANIMAL_FLEE_RANGE = 3;      // animals flee humans within this range
+export const ANIMAL_FLEE_RANGE = 1;      // animals flee humans within this range
 
 export interface Plant {
   id: string;
