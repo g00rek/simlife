@@ -36,9 +36,10 @@ export function App() {
     ? world.entities.find(e => e.id === selectedId) ?? null
     : null;
 
-  // Save extinction log to file via dev server
+  // Stop and save log on extinction
   useEffect(() => {
     if (!extinct) return;
+    setRunning(false);
     const log = world.log;
     const deaths = log.filter(e => e.type === 'death');
     const births = log.filter(e => e.type === 'birth');
