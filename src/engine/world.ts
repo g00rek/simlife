@@ -246,10 +246,11 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     if (!isPassable(biomes[vc.y][vc.x])) {
       biomes[vc.y][vc.x] = 'plains';
     }
-    // Clear area around village center
-    for (let dy = -VILLAGE_RADIUS; dy <= VILLAGE_RADIUS; dy++) {
-      for (let dx = -VILLAGE_RADIUS; dx <= VILLAGE_RADIUS; dx++) {
-        if (Math.abs(dx) + Math.abs(dy) <= VILLAGE_RADIUS) {
+    // Clear area around village center + buffer zone (no mountains near villages)
+    const clearRadius = VILLAGE_RADIUS + 3;
+    for (let dy = -clearRadius; dy <= clearRadius; dy++) {
+      for (let dx = -clearRadius; dx <= clearRadius; dx++) {
+        if (Math.abs(dx) + Math.abs(dy) <= clearRadius) {
           const nx = vc.x + dx;
           const ny = vc.y + dy;
           if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
