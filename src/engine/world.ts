@@ -4,8 +4,9 @@ import {
   BASE_PHEROMONE_RANGE, MATING_DURATION, FIGHTING_DURATION, HUNTING_DURATION, GATHERING_DURATION,
   ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
   ENERGY_MATING_MIN, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
-  BASE_FOOD_SENSE_RANGE, ANIMAL_COUNT, PLANT_COUNT, ANIMAL_RESPAWN_INTERVAL, PLANT_RESPAWN_INTERVAL,
+  BASE_FOOD_SENSE_RANGE, ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
   PLANT_GROW_TIME, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
+  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX,
 } from './types';
 import { randomStep } from './movement';
 
@@ -156,7 +157,11 @@ export function createWorld(options: CreateWorldOptions): WorldState {
 
   const animals: Animal[] = [];
   for (let i = 0; i < ANIMAL_COUNT; i++) {
-    animals.push({ id: generateId('a'), position: randomPos(gridSize) });
+    animals.push({
+      id: generateId('a'),
+      position: randomPos(gridSize),
+      reproTimer: Math.floor(Math.random() * ANIMAL_REPRO_INTERVAL),
+    });
   }
 
   const plants: Plant[] = [];
@@ -399,11 +404,26 @@ export function tick(state: WorldState): WorldState {
   animals = animals.filter(a => !consumedAnimalIds.has(a.id));
   plants = plants.filter(p => !consumedPlantIds.has(p.id));
 
-  // --- Step 1b: Move animals (before humans, so hunters can catch them) ---
-  animals = animals.map(a => ({
-    ...a,
-    position: randomStep(a.position, gridSize),
-  }));
+  // --- Step 1b: Move + reproduce animals ---
+  const newAnimals: Animal[] = [];
+  animals = animals.map(a => {
+    const moved = {
+      ...a,
+      position: randomStep(a.position, gridSize),
+      reproTimer: a.reproTimer - 1,
+    };
+    // Reproduce if timer expired and below carrying capacity
+    if (moved.reproTimer <= 0 && animals.length + newAnimals.length < ANIMAL_MAX) {
+      moved.reproTimer = ANIMAL_REPRO_INTERVAL;
+      newAnimals.push({
+        id: generateId('a'),
+        position: { ...moved.position },
+        reproTimer: ANIMAL_REPRO_INTERVAL + Math.floor(Math.random() * 10),
+      });
+    }
+    return moved;
+  });
+  animals.push(...newAnimals);
 
   // --- Step 2: Detect interactions (pre-movement) ---
   entities = detectInteractions(entities, gridSize, resolvedIds);
@@ -563,9 +583,6 @@ export function tick(state: WorldState): WorldState {
     return { ...p, growTimer: timer };
   });
 
-  if (tickNum % ANIMAL_RESPAWN_INTERVAL === 0) {
-    animals.push({ id: generateId('a'), position: randomPos(gridSize) });
-  }
   if (tickNum % PLANT_RESPAWN_INTERVAL === 0) {
     plants.push({
       id: generateId('p'),

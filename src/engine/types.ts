@@ -36,7 +36,12 @@ export const TRAIT_ENERGY_COST = 0.15; // extra energy drain per total trait poi
 export interface Animal {
   id: string;
   position: Position;
+  reproTimer: number; // ticks until next reproduction attempt
 }
+
+export const ANIMAL_REPRO_INTERVAL = 30; // ticks between reproduction attempts
+export const ANIMAL_REPRO_RANGE = 2;     // max animals on nearby tiles to reproduce
+export const ANIMAL_MAX = 60;            // carrying capacity
 
 export interface Plant {
   id: string;
@@ -72,9 +77,8 @@ export const CHILD_AGE = 10; // children don't lose energy (years)
 
 // Resources
 export const BASE_FOOD_SENSE_RANGE = 3; // added to perception for food sensing
-export const ANIMAL_COUNT = 15;
+export const ANIMAL_COUNT = 20;
 export const PLANT_COUNT = 40;
-export const ANIMAL_RESPAWN_INTERVAL = 10;
 export const PLANT_RESPAWN_INTERVAL = 5; // 1 new plant every N ticks
 
 export type DeathCause = 'old_age' | 'starvation' | 'fight';
