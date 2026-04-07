@@ -81,9 +81,9 @@ export const CHILD_AGE = 10; // children don't lose energy (years)
 
 // Resources
 export const BASE_FOOD_SENSE_RANGE = 3; // added to perception for food sensing
-export const ANIMAL_COUNT = 20;
-export const PLANT_COUNT = 40;
-export const PLANT_RESPAWN_INTERVAL = 5; // 1 new plant every N ticks
+export const ANIMAL_COUNT = 30;
+export const PLANT_COUNT = 60;
+export const PLANT_RESPAWN_INTERVAL = 3; // 1 new plant every N ticks
 
 // Biomes
 export type Biome = 'plains' | 'forest' | 'mountain' | 'water';

@@ -56,7 +56,7 @@ function randomTraits(): Traits {
     speed: Math.floor(Math.random() * 2) + 1,               // 1-2
     perception: Math.floor(Math.random() * 3) + 1,          // 1-3
     metabolism: +(0.8 + Math.random() * 0.4).toFixed(2),     // 0.8-1.2
-    aggression: Math.floor(Math.random() * 6) + 2,          // 2-7
+    aggression: Math.floor(Math.random() * 4) + 1,          // 1-4 (low start, evolution decides)
     fertility: +(0.8 + Math.random() * 0.4).toFixed(2),     // 0.8-1.2
     twinChance: +(Math.random() * 0.1).toFixed(2),         // 0-0.1 (low on start)
   };
