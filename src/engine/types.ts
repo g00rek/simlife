@@ -21,7 +21,7 @@ export interface Entity {
 
 export const MIN_REPRODUCTIVE_AGE = 18;
 export const MAX_REPRODUCTIVE_AGE = 50;
-export const TICKS_PER_YEAR = 5;
+export const TICKS_PER_YEAR = 10;
 export const ACTION_DURATION = 5;
 
 export interface WorldState {
