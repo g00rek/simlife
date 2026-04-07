@@ -5,7 +5,7 @@ import { Stats } from './Stats';
 import { Controls } from './Controls';
 import type { WorldState } from '../engine/types';
 
-const CANVAS_SIZE = 600;
+const CANVAS_SIZE = 900;
 
 export function App() {
   const [world, setWorld] = useState<WorldState>(() =>

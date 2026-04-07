@@ -56,9 +56,8 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
       }
     }
 
-    // Batch by color: collect circles, draw all of same color at once
-    const colorBatches = new Map<string, Array<{ cx: number; cy: number; radius: number }>>();
-
+    // Collect draw data per entity
+    const draws: Array<{ cx: number; cy: number; radius: number; color: string; age: number }> = [];
     const matingHearts: Array<{ cx: number; cy: number }> = [];
 
     for (const [, group] of tileMap) {
@@ -69,16 +68,16 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
         const entity = group[i];
         const baseCx = entity.position.x * cellSize + cellSize / 2;
         const baseCy = entity.position.y * cellSize + cellSize / 2;
-        const radius = cellSize * 0.3;
+        const radius = cellSize * 0.4;
 
         let cx = baseCx;
         let cy = baseCy;
         if (count === 2) {
-          const offset = cellSize * 0.18;
+          const offset = cellSize * 0.22;
           cx = baseCx + (i === 0 ? -offset : offset);
         } else if (count > 2) {
           const angle = (i / count) * Math.PI * 2;
-          const dist = cellSize * 0.2;
+          const dist = cellSize * 0.25;
           cx = baseCx + Math.cos(angle) * dist;
           cy = baseCy + Math.sin(angle) * dist;
         }
@@ -90,12 +89,7 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
           color = entity.gender === 'male' ? MALE_COLOR : FEMALE_COLOR;
         }
 
-        const batch = colorBatches.get(color);
-        if (batch) {
-          batch.push({ cx, cy, radius });
-        } else {
-          colorBatches.set(color, [{ cx, cy, radius }]);
-        }
+        draws.push({ cx, cy, radius, color, age: entity.age });
       }
 
       if (hasMating && count >= 2) {
@@ -106,25 +100,33 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
       }
     }
 
-    // Draw all circles grouped by color (fewer fillStyle changes)
-    for (const [color, circles] of colorBatches) {
+    // Draw circles
+    for (const { cx, cy, radius, color } of draws) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fillStyle = color;
-      for (const { cx, cy, radius } of circles) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.fill();
     }
 
-    // Draw hearts for mating pairs (skip if too many — performance)
+    // Draw age labels on each entity
+    const fontSize = Math.max(7, Math.floor(cellSize * 0.32));
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    for (const { cx, cy, age } of draws) {
+      ctx.fillText(String(age), cx, cy);
+    }
+
+    // Draw hearts for mating pairs
     if (matingHearts.length < 200) {
-      const fontSize = Math.max(8, Math.floor(cellSize * 0.45));
-      ctx.font = `${fontSize}px sans-serif`;
+      const heartSize = Math.max(8, Math.floor(cellSize * 0.4));
+      ctx.font = `${heartSize}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
       ctx.fillStyle = '#f7768e';
       for (const { cx, cy } of matingHearts) {
-        ctx.fillText('❤', cx, cy - cellSize * 0.3);
+        ctx.fillText('❤', cx, cy - cellSize * 0.35);
       }
     }
   }, [world, size]);
