@@ -36,23 +36,38 @@ export function App() {
     ? world.entities.find(e => e.id === selectedId) ?? null
     : null;
 
-  // Log extinction to console (readable by dev tools / automation)
+  // Save extinction log to file via dev server
   useEffect(() => {
     if (!extinct) return;
     const log = world.log;
     const deaths = log.filter(e => e.type === 'death');
     const births = log.filter(e => e.type === 'birth');
-    console.log(JSON.stringify({
-      event: 'EXTINCTION',
-      tick: world.tick,
-      year: Math.floor(world.tick / TICKS_PER_YEAR),
-      births: births.length,
-      deaths: deaths.length,
-      deathsByOldAge: deaths.filter(e => e.cause === 'old_age').length,
-      deathsByStarvation: deaths.filter(e => e.cause === 'starvation').length,
-      deathsByFight: deaths.filter(e => e.cause === 'fight').length,
-      log,
-    }));
+    const byOldAge = deaths.filter(e => e.cause === 'old_age').length;
+    const byStarvation = deaths.filter(e => e.cause === 'starvation').length;
+    const byFight = deaths.filter(e => e.cause === 'fight').length;
+
+    const text = [
+      `=== LIFE SIMULATOR — CIVILIZATION LOG ===`,
+      `Extinct at tick ${world.tick} (year ${Math.floor(world.tick / TICKS_PER_YEAR)})`,
+      ``,
+      `--- SUMMARY ---`,
+      `Births: ${births.length}`,
+      `Deaths: ${deaths.length}`,
+      `  Old age: ${byOldAge}`,
+      `  Starvation: ${byStarvation}`,
+      `  Fight: ${byFight}`,
+      ``,
+      `--- FULL LOG ---`,
+      ...log.map(e => {
+        const y = Math.floor(e.tick / TICKS_PER_YEAR);
+        const g = e.gender === 'male' ? 'M' : 'F';
+        if (e.type === 'birth') return `t${e.tick} y${y} BIRTH ${g} ${e.entityId}`;
+        const a = Math.floor(e.age / TICKS_PER_YEAR);
+        return `t${e.tick} y${y} DEATH ${g} ${e.entityId} age=${a} cause=${e.cause}`;
+      }),
+    ].join('\n');
+
+    fetch('/api/save-log', { method: 'POST', body: text }).catch(() => {});
   }, [extinct]);
 
   // Clear selection if entity died
