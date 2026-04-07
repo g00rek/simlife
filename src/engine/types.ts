@@ -8,6 +8,12 @@ export interface Position {
 
 export type RGB = [number, number, number];
 
+export interface Traits {
+  strength: number;   // 1-10: fight chance, hunting speed
+  speed: number;      // 1-3: steps per tick
+  perception: number; // 1-5: food/mate sensing range
+}
+
 export interface Entity {
   id: string;
   position: Position;
@@ -18,7 +24,11 @@ export interface Entity {
   maxAge: number;
   color: RGB;
   energy: number;
+  traits: Traits;
 }
+
+// Traits
+export const TRAIT_ENERGY_COST = 0.15; // extra energy drain per total trait points above baseline
 
 export interface Animal {
   id: string;
@@ -34,7 +44,7 @@ export interface Plant {
 export const MIN_REPRODUCTIVE_AGE = 18;
 export const MAX_REPRODUCTIVE_AGE = 50;
 export const TICKS_PER_YEAR = 10;
-export const PHEROMONE_RANGE = 1;
+export const BASE_PHEROMONE_RANGE = 1; // added to perception for mate sensing
 
 // Actions
 export const MATING_DURATION = 3;
@@ -53,7 +63,7 @@ export const HUNGER_THRESHOLD = 40;
 export const CHILD_AGE = 10; // children don't lose energy (years)
 
 // Resources
-export const FOOD_SENSE_RANGE = 3;
+export const BASE_FOOD_SENSE_RANGE = 1; // added to perception for food sensing
 export const ANIMAL_COUNT = 15;
 export const PLANT_COUNT = 40;
 export const ANIMAL_RESPAWN_INTERVAL = 10;

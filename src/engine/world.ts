@@ -1,10 +1,10 @@
-import type { Entity, Animal, Plant, Position, WorldState, RGB } from './types';
+import type { Entity, Animal, Plant, Position, WorldState, RGB, Traits } from './types';
 import {
   MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR,
-  PHEROMONE_RANGE, MATING_DURATION, FIGHTING_DURATION, HUNTING_DURATION, GATHERING_DURATION,
+  BASE_PHEROMONE_RANGE, MATING_DURATION, FIGHTING_DURATION, HUNTING_DURATION, GATHERING_DURATION,
   ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
-  ENERGY_MATING_MIN, HUNGER_THRESHOLD, CHILD_AGE,
-  FOOD_SENSE_RANGE, ANIMAL_COUNT, PLANT_COUNT, ANIMAL_RESPAWN_INTERVAL, PLANT_RESPAWN_INTERVAL,
+  ENERGY_MATING_MIN, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
+  BASE_FOOD_SENSE_RANGE, ANIMAL_COUNT, PLANT_COUNT, ANIMAL_RESPAWN_INTERVAL, PLANT_RESPAWN_INTERVAL,
 } from './types';
 import { randomStep } from './movement';
 
@@ -37,6 +37,47 @@ function isHungry(e: Entity): boolean {
 
 function isChild(e: Entity): boolean {
   return ageInYears(e) < CHILD_AGE;
+}
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
+}
+
+function randomTraits(): Traits {
+  return {
+    strength: Math.floor(Math.random() * 5) + 3,   // 3-7
+    speed: Math.floor(Math.random() * 2) + 1,       // 1-2
+    perception: Math.floor(Math.random() * 3) + 1,  // 1-3
+  };
+}
+
+function inheritTraits(a: Traits, b: Traits): Traits {
+  return {
+    strength: clamp(Math.round((a.strength + b.strength) / 2 + (Math.random() * 2 - 1)), 1, 10),
+    speed: clamp(Math.round((a.speed + b.speed) / 2 + (Math.random() * 0.6 - 0.3)), 1, 3),
+    perception: clamp(Math.round((a.perception + b.perception) / 2 + (Math.random() * 1.4 - 0.7)), 1, 5),
+  };
+}
+
+function traitEnergyDrain(t: Traits): number {
+  // Baseline = strength 3 + speed 1 + perception 1 = 5
+  const total = t.strength + t.speed * 3 + t.perception;
+  const baseline = 3 + 3 + 1; // 7
+  return Math.max(0, (total - baseline) * TRAIT_ENERGY_COST);
+}
+
+function foodSenseRange(e: Entity): number {
+  return BASE_FOOD_SENSE_RANGE + e.traits.perception;
+}
+
+function pheromoneRange(e: Entity): number {
+  return BASE_PHEROMONE_RANGE + Math.floor(e.traits.perception / 2);
+}
+
+// Fight: higher strength = higher win chance (weighted random)
+function fightWinner(a: Entity, b: Entity): Entity {
+  const total = a.traits.strength + b.traits.strength;
+  return Math.random() * total < a.traits.strength ? a : b;
 }
 
 const BASE_COLORS: RGB[] = [
@@ -107,6 +148,7 @@ export function createWorld(options: CreateWorldOptions): WorldState {
       maxAge: randomMaxAge(),
       color: BASE_COLORS[i % 3],
       energy: ENERGY_START,
+      traits: randomTraits(),
     });
   }
 
@@ -186,9 +228,10 @@ export function tick(state: WorldState): WorldState {
   let entities: Entity[] = state.entities
     .map(e => {
       const aged = { ...e, age: e.age + 1 };
-      // Energy drain (skip children)
+      // Energy drain (skip children). Higher traits = more drain.
       if (!isChild(aged) && aged.age % ENERGY_DRAIN_INTERVAL === 0) {
-        aged.energy = Math.max(0, aged.energy - 1);
+        const drain = 1 + traitEnergyDrain(aged.traits);
+        aged.energy = Math.max(0, aged.energy - drain);
       }
       return aged;
     })
@@ -241,14 +284,18 @@ export function tick(state: WorldState): WorldState {
           maxAge: randomMaxAge(),
           color: mixColors(male.color, female.color),
           energy: ENERGY_START,
+          traits: inheritTraits(male.traits, female.traits),
         });
         grid[birthPos.y][birthPos.x]++;
       }
     } else if (action === 'fighting') {
-      const loser = finishing[Math.floor(Math.random() * finishing.length)];
-      deadIds.add(loser.id);
-      for (const e of finishing) {
-        if (!deadIds.has(e.id)) resolvedIds.add(e.id);
+      // Strength-weighted fight: stronger has higher chance of winning
+      const [a, b] = finishing;
+      if (a && b) {
+        const winner = fightWinner(a, b);
+        const loser = winner.id === a.id ? b : a;
+        deadIds.add(loser.id);
+        resolvedIds.add(winner.id);
       }
     } else if (action === 'hunting') {
       for (const hunter of finishing) {
@@ -328,7 +375,8 @@ export function tick(state: WorldState): WorldState {
         a.position.x === e.position.x && a.position.y === e.position.y
       );
       if (prey) {
-        entities[i] = { ...e, state: 'hunting', stateTimer: HUNTING_DURATION };
+        const huntTime = Math.max(1, HUNTING_DURATION - Math.floor(e.traits.strength / 4));
+        entities[i] = { ...e, state: 'hunting', stateTimer: huntTime };
         continue;
       }
     }
@@ -356,67 +404,75 @@ export function tick(state: WorldState): WorldState {
   const babyIds = new Set(babies.map(b => b.id));
 
   for (const idx of indices) {
-    const entity = entities[idx];
+    let entity = entities[idx];
     if (entity.state !== 'idle' || babyIds.has(entity.id)) continue;
 
-    let target: Position | null = null;
+    const steps = entity.traits.speed;
+    const senseFood = foodSenseRange(entity);
+    const senseMate = pheromoneRange(entity);
 
-    // Priority 1: Hungry → seek food
-    if (isHungry(entity) && !isChild(entity)) {
-      if (entity.gender === 'male') {
-        // Seek nearest animal
-        let bestDist = FOOD_SENSE_RANGE + 1;
-        for (const a of animals) {
-          const d = manhattan(entity.position, a.position);
-          if (d > 0 && d <= FOOD_SENSE_RANGE && d < bestDist) {
-            bestDist = d;
-            target = stepToward(entity.position, a.position);
+    for (let step = 0; step < steps; step++) {
+      // Re-check state (might have been set by detection in previous step... not here but safety)
+      if (entity.state !== 'idle') break;
+
+      let target: Position | null = null;
+
+      // Priority 1: Hungry → seek food
+      if (isHungry(entity) && !isChild(entity)) {
+        if (entity.gender === 'male') {
+          let bestDist = senseFood + 1;
+          for (const a of animals) {
+            const d = manhattan(entity.position, a.position);
+            if (d > 0 && d <= senseFood && d < bestDist) {
+              bestDist = d;
+              target = stepToward(entity.position, a.position);
+            }
+          }
+        } else {
+          let bestDist = senseFood + 1;
+          for (const p of plants) {
+            const d = manhattan(entity.position, p.position);
+            if (d > 0 && d <= senseFood && d < bestDist) {
+              bestDist = d;
+              target = stepToward(entity.position, p.position);
+            }
           }
         }
-      } else {
-        // Seek nearest plant
-        let bestDist = FOOD_SENSE_RANGE + 1;
-        for (const p of plants) {
-          const d = manhattan(entity.position, p.position);
-          if (d > 0 && d <= FOOD_SENSE_RANGE && d < bestDist) {
+      }
+
+      // Priority 2: Fed + reproductive → pheromone attraction
+      if (!target && isReproductive(entity) && !isHungry(entity)
+          && entity.energy >= ENERGY_MATING_MIN) {
+        const oppositeGender = entity.gender === 'male' ? 'female' : 'male';
+        let bestDist = senseMate + 1;
+        let bestPos: Position | null = null;
+
+        for (const other of entities) {
+          if (other.gender !== oppositeGender || other.state !== 'idle' || !isReproductive(other)) continue;
+          if (other.energy < ENERGY_MATING_MIN) continue;
+          const d = manhattan(entity.position, other.position);
+          if (d > 0 && d <= senseMate && d < bestDist) {
             bestDist = d;
-            target = stepToward(entity.position, p.position);
+            bestPos = other.position;
           }
         }
-      }
-    }
 
-    // Priority 2: Fed + reproductive → pheromone attraction
-    if (!target && PHEROMONE_RANGE > 0 && isReproductive(entity) && !isHungry(entity)
-        && entity.energy >= ENERGY_MATING_MIN) {
-      const oppositeGender = entity.gender === 'male' ? 'female' : 'male';
-      let bestDist = PHEROMONE_RANGE + 1;
-      let bestPos: Position | null = null;
-
-      for (const other of entities) {
-        if (other.gender !== oppositeGender || other.state !== 'idle' || !isReproductive(other)) continue;
-        if (other.energy < ENERGY_MATING_MIN) continue;
-        const d = manhattan(entity.position, other.position);
-        if (d > 0 && d <= PHEROMONE_RANGE && d < bestDist) {
-          bestDist = d;
-          bestPos = other.position;
+        if (bestPos) {
+          target = stepToward(entity.position, bestPos);
         }
       }
 
-      if (bestPos) {
-        target = stepToward(entity.position, bestPos);
+      // Priority 3: Random step
+      if (!target) {
+        target = randomStep(entity.position, gridSize);
       }
-    }
 
-    // Priority 3: Random step
-    if (!target) {
-      target = randomStep(entity.position, gridSize);
-    }
-
-    if (moveGrid[target.y][target.x] < 2) {
-      moveGrid[entity.position.y][entity.position.x]--;
-      moveGrid[target.y][target.x]++;
-      entities[idx] = { ...entity, position: target };
+      if (moveGrid[target.y][target.x] < 2) {
+        moveGrid[entity.position.y][entity.position.x]--;
+        moveGrid[target.y][target.x]++;
+        entity = { ...entity, position: target };
+        entities[idx] = entity;
+      }
     }
   }
 
@@ -433,7 +489,8 @@ export function tick(state: WorldState): WorldState {
         a.position.x === e.position.x && a.position.y === e.position.y
       );
       if (prey) {
-        entities[i] = { ...e, state: 'hunting', stateTimer: HUNTING_DURATION };
+        const huntTime = Math.max(1, HUNTING_DURATION - Math.floor(e.traits.strength / 4));
+        entities[i] = { ...e, state: 'hunting', stateTimer: huntTime };
         continue;
       }
     }
