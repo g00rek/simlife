@@ -161,52 +161,7 @@ export function tick(state: WorldState): WorldState {
     });
   entities.push(...babies);
 
-  // --- Step 2: Detect new interactions on tiles ---
-  const tileGroups = new Map<number, Entity[]>();
-  for (const e of entities) {
-    const key = e.position.y * gridSize + e.position.x;
-    const group = tileGroups.get(key) ?? [];
-    group.push(e);
-    tileGroups.set(key, group);
-  }
-
-  const newActionIds = new Set<string>();
-
-  for (const [, group] of tileGroups) {
-    const idleMales = group.filter(e => e.gender === 'male' && e.state === 'idle' && !resolvedIds.has(e.id));
-    const idleFemales = group.filter(e => e.gender === 'female' && e.state === 'idle' && !resolvedIds.has(e.id));
-
-    // Priority: fights first (2 idle males)
-    if (idleMales.length >= 2) {
-      newActionIds.add(idleMales[0].id);
-      newActionIds.add(idleMales[1].id);
-    }
-    // Then mating (idle male + idle female, both reproductive, not already fighting)
-    else if (idleMales.length >= 1 && idleFemales.length >= 1) {
-      const male = idleMales.find(e => isReproductive(e) && !newActionIds.has(e.id));
-      const female = idleFemales.find(e => isReproductive(e));
-      if (male && female) {
-        newActionIds.add(male.id);
-        newActionIds.add(female.id);
-      }
-    }
-  }
-
-  entities = entities.map(e => {
-    if (!newActionIds.has(e.id)) return e;
-    // Determine action type based on co-occupant
-    const key = e.position.y * gridSize + e.position.x;
-    const group = tileGroups.get(key)!;
-    const otherActionMale = group.find(
-      o => o.id !== e.id && o.gender === 'male' && newActionIds.has(o.id)
-    );
-    if (e.gender === 'male' && otherActionMale) {
-      return { ...e, state: 'fighting' as const, stateTimer: ACTION_DURATION };
-    }
-    return { ...e, state: 'mating' as const, stateTimer: ACTION_DURATION };
-  });
-
-  // --- Step 3: Move idle entities (with pheromone attraction) ---
+  // --- Step 2: Move idle entities (with pheromone attraction) ---
   const moveGrid = createOccupancyGrid(gridSize, entities);
   const indices = Array.from({ length: entities.length }, (_, i) => i);
   for (let i = indices.length - 1; i > 0; i--) {
@@ -262,6 +217,50 @@ export function tick(state: WorldState): WorldState {
       entities[idx] = { ...entity, position: target };
     }
   }
+
+  // --- Step 3: Detect new interactions on tiles (after movement) ---
+  const tileGroups = new Map<number, Entity[]>();
+  for (const e of entities) {
+    const key = e.position.y * gridSize + e.position.x;
+    const group = tileGroups.get(key) ?? [];
+    group.push(e);
+    tileGroups.set(key, group);
+  }
+
+  const newActionIds = new Set<string>();
+
+  for (const [, group] of tileGroups) {
+    const idleMales = group.filter(e => e.gender === 'male' && e.state === 'idle' && !resolvedIds.has(e.id));
+    const idleFemales = group.filter(e => e.gender === 'female' && e.state === 'idle' && !resolvedIds.has(e.id));
+
+    // Priority: fights first (2 idle males)
+    if (idleMales.length >= 2) {
+      newActionIds.add(idleMales[0].id);
+      newActionIds.add(idleMales[1].id);
+    }
+    // Then mating (idle male + idle female, both reproductive, not already fighting)
+    else if (idleMales.length >= 1 && idleFemales.length >= 1) {
+      const male = idleMales.find(e => isReproductive(e) && !newActionIds.has(e.id));
+      const female = idleFemales.find(e => isReproductive(e));
+      if (male && female) {
+        newActionIds.add(male.id);
+        newActionIds.add(female.id);
+      }
+    }
+  }
+
+  entities = entities.map(e => {
+    if (!newActionIds.has(e.id)) return e;
+    const key = e.position.y * gridSize + e.position.x;
+    const group = tileGroups.get(key)!;
+    const otherActionMale = group.find(
+      o => o.id !== e.id && o.gender === 'male' && newActionIds.has(o.id)
+    );
+    if (e.gender === 'male' && otherActionMale) {
+      return { ...e, state: 'fighting' as const, stateTimer: ACTION_DURATION };
+    }
+    return { ...e, state: 'mating' as const, stateTimer: ACTION_DURATION };
+  });
 
   return { ...state, tick: state.tick + 1, entities };
 }
