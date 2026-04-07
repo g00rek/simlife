@@ -18,11 +18,11 @@ export function Controls({ running, speed, onToggle, onSpeedChange }: ControlsPr
         </div>
         <input
           type="range"
-          min={50}
-          max={1000}
-          step={50}
-          value={1050 - speed}
-          onChange={e => onSpeedChange(1050 - Number(e.target.value))}
+          min={10}
+          max={300}
+          step={10}
+          value={310 - speed}
+          onChange={e => onSpeedChange(310 - Number(e.target.value))}
           style={{ width: '100%' }}
         />
       </div>
