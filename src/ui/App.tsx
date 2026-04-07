@@ -19,7 +19,12 @@ export function App() {
   const [running, setRunning] = useState(false);
   const [speed, setSpeed] = useState(300);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [popHistory, setPopHistory] = useState<number[]>([60]);
+  interface HistoryPoint {
+    pop: number[];       // population per tribe [0,1,2,ronin]
+    meat: number[];      // pantry meat per village [0,1,2]
+    plant: number[];     // pantry plant per village [0,1,2]
+  }
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
 
   const extinct = world.entities.length === 0 && world.tick > 0;
 
@@ -28,8 +33,11 @@ export function App() {
       if (prev.entities.length === 0) return prev;
       const next = tick(prev);
       if (next.tick % POP_SAMPLE_INTERVAL === 0) {
-        setPopHistory(h => {
-          const updated = [...h, next.entities.length];
+        setHistory(h => {
+          const pop = [0, 1, 2, -1].map(t => next.entities.filter(e => e.tribe === t).length);
+          const meat = next.villages.map(v => v.meatStore);
+          const plant = next.villages.map(v => v.plantStore);
+          const updated = [...h, { pop, meat, plant }];
           return updated.length > 200 ? updated.slice(-200) : updated;
         });
       }
@@ -126,8 +134,21 @@ export function App() {
           )}
           <Stats world={world} />
           <div style={{ background: '#1a1b26', border: '1px solid #333', borderRadius: '4px', padding: '12px' }}>
-            <div style={labelStyle}>Population History</div>
-            <PopGraph history={popHistory} width={176} height={60} />
+            <div style={labelStyle}>Population</div>
+            <PopGraph series={[
+              { data: history.map(h => h.pop[0]), color: '#dc3c3c', label: 'Red' },
+              { data: history.map(h => h.pop[1]), color: '#3cb43c', label: 'Grn' },
+              { data: history.map(h => h.pop[2]), color: '#3c64dc', label: 'Blu' },
+              { data: history.map(h => h.pop[3]), color: '#b48c3c', label: 'Ron' },
+            ]} width={176} height={60} />
+          </div>
+          <div style={{ background: '#1a1b26', border: '1px solid #333', borderRadius: '4px', padding: '12px' }}>
+            <div style={labelStyle}>Pantry (meat)</div>
+            <PopGraph series={[
+              { data: history.map(h => h.meat[0]), color: '#dc3c3c', label: 'Red' },
+              { data: history.map(h => h.meat[1]), color: '#3cb43c', label: 'Grn' },
+              { data: history.map(h => h.meat[2]), color: '#3c64dc', label: 'Blu' },
+            ]} width={176} height={50} />
           </div>
           <TraitAverages entities={world.entities} />
           <Controls

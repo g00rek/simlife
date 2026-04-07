@@ -855,12 +855,12 @@ export function tick(state: WorldState): WorldState {
         }
       }
 
-      // Priority 3: Random step
-      if (!target) {
+      // Priority 3: Random step (only outside village — in village, stay put)
+      if (!target && !inOwnVillage) {
         target = randomStepBiome(entity.position, gridSize, biomes);
       }
 
-      if (moveGrid[target.y][target.x] < 2 && canEnterTile(target, entity.tribe, villages)) {
+      if (target && moveGrid[target.y][target.x] < 2 && canEnterTile(target, entity.tribe, villages)) {
         moveGrid[entity.position.y][entity.position.x]--;
         moveGrid[target.y][target.x]++;
         entity = { ...entity, position: target };
