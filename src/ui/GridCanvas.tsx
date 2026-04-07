@@ -254,31 +254,14 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
       drawPerson(ctx, cx, cy, cellSize, gender, color, child);
     }
 
-    // Draw age below figure
-    const ageSize = Math.max(6, Math.floor(cellSize * 0.24));
-    ctx.font = `bold ${ageSize}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = '#aaa';
-    for (const { cx, cy, age } of draws) {
-      ctx.fillText(String(age), cx, cy + cellSize * 0.28);
-    }
-
-    // Draw energy bar under age
-    const barW = cellSize * 0.5;
-    const barH = 2;
-    for (const { cx, cy, energy } of draws) {
-      const barY = cy + cellSize * 0.38;
-      const barX = cx - barW / 2;
-      const fill = energy / 100;
-      // Background
-      ctx.fillStyle = '#333';
-      ctx.fillRect(barX, barY, barW, barH);
-      // Fill (green → yellow → red)
-      const r = fill < 0.5 ? 255 : Math.round(255 * (1 - fill) * 2);
-      const g = fill > 0.5 ? 255 : Math.round(255 * fill * 2);
-      ctx.fillStyle = `rgb(${r},${g},0)`;
-      ctx.fillRect(barX, barY, barW * fill, barH);
+    // Draw gender indicator dot under figure
+    for (const { cx, cy, gender, child } of draws) {
+      const dotY = cy + cellSize * (child ? 0.18 : 0.28);
+      const dotR = cellSize * 0.06;
+      ctx.beginPath();
+      ctx.arc(cx, dotY, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = gender === 'male' ? '#7aa2f7' : '#f7768e';
+      ctx.fill();
     }
 
     // Draw tile icons
