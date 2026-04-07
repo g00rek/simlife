@@ -818,9 +818,10 @@ export function tick(state: WorldState): WorldState {
         }
       }
 
-      // Priority 2: Fed + reproductive → pheromone attraction
+      // Priority 2: Fed + reproductive → seek mate (whole village range if inside, pheromone range if outside)
       if (!target && isReproductive(entity) && !isHungry(entity)
           && entity.energy >= ENERGY_MATING_MIN) {
+        const senseMateRange = inOwnVillage ? VILLAGE_RADIUS * 2 : senseMate;
         const oppositeGender = entity.gender === 'male' ? 'female' : 'male';
         let bestPos: Position | null = null;
 
@@ -838,7 +839,7 @@ export function tick(state: WorldState): WorldState {
             if (!(mv ? mv.meatStore >= PANTRY_MATING_MIN : entity.meat > 0)) continue;
           }
           const d = manhattan(entity.position, other.position);
-          if (d <= 0 || d > senseMate) continue;
+          if (d <= 0 || d > senseMateRange) continue;
           // Sexual selection: females prefer strong males with lots of meat
           const attractiveness = entity.gender === 'female'
             ? other.traits.strength + other.meat * 2 + other.traits.speed
