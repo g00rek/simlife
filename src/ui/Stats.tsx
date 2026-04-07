@@ -1,6 +1,10 @@
-import type { WorldState } from '../engine/types';
-import { TICKS_PER_YEAR } from '../engine/types';
+import type { WorldState, Entity } from '../engine/types';
+import { TICKS_PER_YEAR, CHILD_AGE } from '../engine/types';
 import { ageInYears } from '../engine/world';
+
+function isChild(e: Entity): boolean {
+  return ageInYears(e) < CHILD_AGE;
+}
 
 interface StatsProps {
   world: WorldState;
@@ -24,8 +28,9 @@ export function Stats({ world }: StatsProps) {
         <div style={labelStyle}>Population — {world.entities.length}</div>
         {world.villages.map(v => {
           const members = world.entities.filter(e => e.tribe === v.tribe);
-          const m = members.filter(e => e.gender === 'male').length;
-          const f = members.filter(e => e.gender === 'female').length;
+          const m = members.filter(e => e.gender === 'male' && !isChild(e)).length;
+          const f = members.filter(e => e.gender === 'female' && !isChild(e)).length;
+          const kids = members.filter(e => isChild(e)).length;
           return (
             <div key={v.tribe} style={{ fontSize: '11px', marginBottom: '2px' }}>
               <span style={{ color: `rgb(${v.color.join(',')})` }}>{v.name}</span>
@@ -33,14 +38,16 @@ export function Stats({ world }: StatsProps) {
               <span style={{ color: '#7aa2f7' }}>&#9794;{m}</span>
               {' '}
               <span style={{ color: '#f7768e' }}>&#9792;{f}</span>
+              {kids > 0 && <span style={{ color: '#888' }}> &#128118;{kids}</span>}
             </div>
           );
         })}
         {(() => {
           const ronins = world.entities.filter(e => e.tribe === -1);
           if (ronins.length === 0) return null;
-          const m = ronins.filter(e => e.gender === 'male').length;
-          const f = ronins.filter(e => e.gender === 'female').length;
+          const m = ronins.filter(e => e.gender === 'male' && !isChild(e)).length;
+          const f = ronins.filter(e => e.gender === 'female' && !isChild(e)).length;
+          const kids = ronins.filter(e => isChild(e)).length;
           return (
             <div style={{ fontSize: '11px', marginBottom: '2px' }}>
               <span style={{ color: '#b48c3c' }}>Ronin</span>
@@ -48,6 +55,7 @@ export function Stats({ world }: StatsProps) {
               <span style={{ color: '#7aa2f7' }}>&#9794;{m}</span>
               {' '}
               <span style={{ color: '#f7768e' }}>&#9792;{f}</span>
+              {kids > 0 && <span style={{ color: '#888' }}> &#128118;{kids}</span>}
             </div>
           );
         })()}
