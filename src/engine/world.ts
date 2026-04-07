@@ -553,14 +553,20 @@ export function tick(state: WorldState): WorldState {
         }
       }
     } else if (action === 'fighting') {
-      // Strength-weighted fight: stronger has higher chance of winning
+      // Strength-weighted fight: loser takes damage, dies only if energy drops to 0
       const [a, b] = finishing;
       if (a && b) {
         const winner = fightWinner(a, b);
-        const loser = winner.id === a.id ? b : a;
-        deadIds.add(loser.id);
-        log.push({ tick: tickNum, type: 'death', entityId: loser.id, gender: loser.gender, age: loser.age, cause: 'fight' });
+        const loserId = winner.id === a.id ? b.id : a.id;
+        const loserEntity = winner.id === a.id ? b : a;
+        const loserEnergy = loserEntity.energy - 40;
+        if (loserEnergy <= 0) {
+          deadIds.add(loserId);
+          log.push({ tick: tickNum, type: 'death', entityId: loserId, gender: loserEntity.gender, age: loserEntity.age, cause: 'fight' });
+        }
+        // Loser energy reduction handled in apply step below
         resolvedIds.add(winner.id);
+        resolvedIds.add(loserId);
       }
     } else if (action === 'hunting') {
       for (const hunter of finishing) {
@@ -599,7 +605,10 @@ export function tick(state: WorldState): WorldState {
         let meat = e.meat;
         const myVillage = getVillage(e.tribe);
 
-        if (e.state === 'hunting') {
+        if (e.state === 'fighting') {
+          energy = Math.max(0, energy - 20); // fighting costs energy for everyone
+          return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat };
+        } else if (e.state === 'hunting') {
           const hadPrey = animals.some(a =>
             a.position.x === e.position.x &&
             a.position.y === e.position.y &&

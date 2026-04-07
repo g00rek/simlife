@@ -85,7 +85,7 @@ export const BASE_PHEROMONE_RANGE = 1; // added to perception for mate sensing
 
 // Actions
 export const MATING_DURATION = 1;
-export const PREGNANCY_DURATION = 10; // ~1 year
+export const PREGNANCY_DURATION = 15; // ~1.5 years
 export const FIGHTING_DURATION = 3;
 export const HUNTING_DURATION = 3;
 export const GATHERING_DURATION = 2;
