@@ -404,26 +404,42 @@ export function tick(state: WorldState): WorldState {
   animals = animals.filter(a => !consumedAnimalIds.has(a.id));
   plants = plants.filter(p => !consumedPlantIds.has(p.id));
 
-  // --- Step 1b: Move + reproduce animals ---
-  const newAnimals: Animal[] = [];
-  animals = animals.map(a => {
-    const moved = {
-      ...a,
-      position: randomStep(a.position, gridSize),
-      reproTimer: a.reproTimer - 1,
-    };
-    // Reproduce if timer expired and below carrying capacity
-    if (moved.reproTimer <= 0 && animals.length + newAnimals.length < ANIMAL_MAX) {
-      moved.reproTimer = ANIMAL_REPRO_INTERVAL;
-      newAnimals.push({
-        id: generateId('a'),
-        position: { ...moved.position },
-        reproTimer: ANIMAL_REPRO_INTERVAL + Math.floor(Math.random() * 10),
-      });
+  // --- Step 1b: Move animals + tick cooldowns ---
+  animals = animals.map(a => ({
+    ...a,
+    position: randomStep(a.position, gridSize),
+    reproTimer: Math.max(0, a.reproTimer - 1),
+  }));
+
+  // --- Step 1c: Reproduce animals (two ready on same tile → offspring) ---
+  if (animals.length < ANIMAL_MAX) {
+    const animalTiles = new Map<number, Animal[]>();
+    for (const a of animals) {
+      const key = a.position.y * gridSize + a.position.x;
+      const group = animalTiles.get(key) ?? [];
+      group.push(a);
+      animalTiles.set(key, group);
     }
-    return moved;
-  });
-  animals.push(...newAnimals);
+    const babyAnimals: Animal[] = [];
+    for (const [key, group] of animalTiles) {
+      const ready = group.filter(a => a.reproTimer === 0);
+      if (ready.length >= 2 && animals.length + babyAnimals.length < ANIMAL_MAX) {
+        // Two ready animals met → baby, both get cooldown
+        ready[0].reproTimer = ANIMAL_REPRO_INTERVAL;
+        ready[1].reproTimer = ANIMAL_REPRO_INTERVAL;
+        const px = key % gridSize;
+        const py = Math.floor(key / gridSize);
+        const ns = neighbors({ x: px, y: py }, gridSize);
+        const spot = ns[Math.floor(Math.random() * ns.length)];
+        babyAnimals.push({
+          id: generateId('a'),
+          position: spot,
+          reproTimer: ANIMAL_REPRO_INTERVAL,
+        });
+      }
+    }
+    animals.push(...babyAnimals);
+  }
 
   // --- Step 2: Detect interactions (pre-movement) ---
   entities = detectInteractions(entities, gridSize, resolvedIds);
