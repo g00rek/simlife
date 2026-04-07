@@ -1,5 +1,5 @@
 import type { Entity, Position, WorldState, RGB } from './types';
-import { MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR } from './types';
+import { MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR, ACTION_DURATION } from './types';
 import { randomStep } from './movement';
 
 interface CreateWorldOptions {
@@ -72,6 +72,7 @@ export function createWorld(options: CreateWorldOptions): WorldState {
       },
       gender: i < entityCount / 2 ? 'male' : 'female',
       state: 'idle',
+      stateTimer: 0,
       age: Math.floor(Math.random() * 31) * TICKS_PER_YEAR, // 0-30 years in ticks
       maxAge: randomMaxAge(),
       color: BASE_COLORS[i % 3],
@@ -89,58 +90,78 @@ export function tick(state: WorldState): WorldState {
     .map(e => ({ ...e, age: e.age + 1 }))
     .filter(e => e.age < e.maxAge);
 
-  // --- Step 1: Complete matings, spawn babies ---
+  // --- Step 1: Resolve completed actions (timer reaches 1 → done this tick) ---
   const grid = createOccupancyGrid(gridSize, entities);
   const babies: Entity[] = [];
   const resolvedIds = new Set<string>();
+  const deadIds = new Set<string>();
 
-  // Group mating entities by tile using numeric key
-  const matingByTile = new Map<number, Entity[]>();
+  // Group busy entities by tile
+  const busyByTile = new Map<number, Entity[]>();
   for (const e of entities) {
-    if (e.state === 'mating') {
+    if (e.state !== 'idle') {
       const key = e.position.y * gridSize + e.position.x;
-      const group = matingByTile.get(key) ?? [];
+      const group = busyByTile.get(key) ?? [];
       group.push(e);
-      matingByTile.set(key, group);
+      busyByTile.set(key, group);
     }
   }
 
-  for (const [, group] of matingByTile) {
-    const male = group.find(e => e.gender === 'male');
-    const female = group.find(e => e.gender === 'female');
-    if (male && female) {
-      resolvedIds.add(male.id);
-      resolvedIds.add(female.id);
+  for (const [, group] of busyByTile) {
+    // Check if this group's timer is done (timer === 1 means this is the last tick)
+    const finishing = group.filter(e => e.stateTimer === 1);
+    if (finishing.length === 0) continue;
 
-      // Find birth position: random neighbor with < 2, else parent tile
-      const ns = neighbors(male.position, gridSize);
-      const free = ns.filter(n => grid[n.y][n.x] < 2);
-      const birthPos = free.length > 0
-        ? free[Math.floor(Math.random() * free.length)]
-        : { ...male.position };
+    if (finishing[0].state === 'mating') {
+      const male = finishing.find(e => e.gender === 'male');
+      const female = finishing.find(e => e.gender === 'female');
+      if (male && female) {
+        resolvedIds.add(male.id);
+        resolvedIds.add(female.id);
 
-      const baby: Entity = {
-        id: generateId(),
-        position: birthPos,
-        gender: Math.random() < 0.5 ? 'male' : 'female',
-        state: 'idle',
-        age: 0,
-        maxAge: randomMaxAge(),
-        color: mixColors(male.color, female.color),
-      };
-      babies.push(baby);
-      grid[birthPos.y][birthPos.x]++;
+        const ns = neighbors(male.position, gridSize);
+        const free = ns.filter(n => grid[n.y][n.x] < 2);
+        const birthPos = free.length > 0
+          ? free[Math.floor(Math.random() * free.length)]
+          : { ...male.position };
+
+        babies.push({
+          id: generateId(),
+          position: birthPos,
+          gender: Math.random() < 0.5 ? 'male' : 'female',
+          state: 'idle',
+          stateTimer: 0,
+          age: 0,
+          maxAge: randomMaxAge(),
+          color: mixColors(male.color, female.color),
+        });
+        grid[birthPos.y][birthPos.x]++;
+      }
+    } else if (finishing[0].state === 'fighting') {
+      // Fight resolved — random loser dies
+      const loser = finishing[Math.floor(Math.random() * finishing.length)];
+      deadIds.add(loser.id);
+      for (const e of finishing) {
+        if (!deadIds.has(e.id)) resolvedIds.add(e.id);
+      }
     }
   }
 
-  // Update resolved entities to idle, add babies
-  entities = entities.map(e =>
-    resolvedIds.has(e.id) ? { ...e, state: 'idle' as const } : e
-  );
+  // Apply resolutions: resolved → idle, dead → removed, timers decremented
+  entities = entities
+    .filter(e => !deadIds.has(e.id))
+    .map(e => {
+      if (resolvedIds.has(e.id)) {
+        return { ...e, state: 'idle' as const, stateTimer: 0 };
+      }
+      if (e.state !== 'idle' && e.stateTimer > 1) {
+        return { ...e, stateTimer: e.stateTimer - 1 };
+      }
+      return e;
+    });
   entities.push(...babies);
 
-  // --- Step 2: Detect new mating pairs ---
-  // Group by tile using numeric key
+  // --- Step 2: Detect new interactions on tiles ---
   const tileGroups = new Map<number, Entity[]>();
   for (const e of entities) {
     const key = e.position.y * gridSize + e.position.x;
@@ -149,53 +170,44 @@ export function tick(state: WorldState): WorldState {
     tileGroups.set(key, group);
   }
 
-  const newMatingIds = new Set<string>();
+  const newActionIds = new Set<string>();
+
   for (const [, group] of tileGroups) {
-    const idleMale = group.find(
-      e => e.gender === 'male' && e.state === 'idle' && !resolvedIds.has(e.id) && isReproductive(e)
+    const idleMales = group.filter(e => e.gender === 'male' && e.state === 'idle' && !resolvedIds.has(e.id));
+    const idleFemales = group.filter(e => e.gender === 'female' && e.state === 'idle' && !resolvedIds.has(e.id));
+
+    // Priority: fights first (2 idle males)
+    if (idleMales.length >= 2) {
+      newActionIds.add(idleMales[0].id);
+      newActionIds.add(idleMales[1].id);
+    }
+    // Then mating (idle male + idle female, both reproductive, not already fighting)
+    else if (idleMales.length >= 1 && idleFemales.length >= 1) {
+      const male = idleMales.find(e => isReproductive(e) && !newActionIds.has(e.id));
+      const female = idleFemales.find(e => isReproductive(e));
+      if (male && female) {
+        newActionIds.add(male.id);
+        newActionIds.add(female.id);
+      }
+    }
+  }
+
+  entities = entities.map(e => {
+    if (!newActionIds.has(e.id)) return e;
+    // Determine action type based on co-occupant
+    const key = e.position.y * gridSize + e.position.x;
+    const group = tileGroups.get(key)!;
+    const otherActionMale = group.find(
+      o => o.id !== e.id && o.gender === 'male' && newActionIds.has(o.id)
     );
-    const idleFemale = group.find(
-      e => e.gender === 'female' && e.state === 'idle' && !resolvedIds.has(e.id) && isReproductive(e)
-    );
-    if (idleMale && idleFemale) {
-      newMatingIds.add(idleMale.id);
-      newMatingIds.add(idleFemale.id);
+    if (e.gender === 'male' && otherActionMale) {
+      return { ...e, state: 'fighting' as const, stateTimer: ACTION_DURATION };
     }
-  }
-
-  entities = entities.map(e =>
-    newMatingIds.has(e.id) ? { ...e, state: 'mating' as const } : e
-  );
-
-  // --- Step 2b: Male fights ---
-  // Two idle males on the same tile → one dies (random loser)
-  const fightTiles = new Map<number, Entity[]>();
-  for (const e of entities) {
-    if (e.gender === 'male' && e.state === 'idle') {
-      const key = e.position.y * gridSize + e.position.x;
-      const group = fightTiles.get(key);
-      if (group) group.push(e);
-      else fightTiles.set(key, [e]);
-    }
-  }
-
-  const deadIds = new Set<string>();
-  for (const [, males] of fightTiles) {
-    if (males.length >= 2) {
-      const loser = males[Math.floor(Math.random() * males.length)];
-      deadIds.add(loser.id);
-    }
-  }
-
-  if (deadIds.size > 0) {
-    entities = entities.filter(e => !deadIds.has(e.id));
-  }
-
-  // Rebuild grid after births and fights
-  const moveGrid = createOccupancyGrid(gridSize, entities);
+    return { ...e, state: 'mating' as const, stateTimer: ACTION_DURATION };
+  });
 
   // --- Step 3: Move idle entities ---
-  // Shuffle indices for fairness
+  const moveGrid = createOccupancyGrid(gridSize, entities);
   const indices = Array.from({ length: entities.length }, (_, i) => i);
   for (let i = indices.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
