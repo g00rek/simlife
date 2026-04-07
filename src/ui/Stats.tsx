@@ -10,8 +10,13 @@ export function Stats({ world }: StatsProps) {
   const males = world.entities.filter(e => e.gender === 'male').length;
   const females = world.entities.filter(e => e.gender === 'female').length;
   const mating = world.entities.filter(e => e.state === 'mating').length;
+  const hunting = world.entities.filter(e => e.state === 'hunting').length;
+  const gathering = world.entities.filter(e => e.state === 'gathering').length;
   const avgAge = world.entities.length > 0
     ? Math.round(world.entities.reduce((sum, e) => sum + ageInYears(e), 0) / world.entities.length)
+    : 0;
+  const avgEnergy = world.entities.length > 0
+    ? Math.round(world.entities.reduce((sum, e) => sum + e.energy, 0) / world.entities.length)
     : 0;
   const year = Math.floor(world.tick / TICKS_PER_YEAR);
 
@@ -37,8 +42,25 @@ export function Stats({ world }: StatsProps) {
         <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>tura {world.tick}</div>
       </div>
       <div style={panelStyle}>
-        <div style={labelStyle}>Średni wiek</div>
-        <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{avgAge}</div>
+        <div style={labelStyle}>Wiek / Energia</div>
+        <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{avgAge} lat</div>
+        <div style={{ fontSize: '14px', color: '#9ece6a', marginTop: '2px' }}>&#9889; {avgEnergy}</div>
+      </div>
+      <div style={panelStyle}>
+        <div style={labelStyle}>Zasoby</div>
+        <div style={{ fontSize: '12px' }}>
+          <span style={{ color: '#8d6e63' }}>&#9670; {world.animals.length} zwierząt</span>
+        </div>
+        <div style={{ fontSize: '12px', marginTop: '2px' }}>
+          <span style={{ color: '#4caf50' }}>&#9679; {world.plants.length} roślin</span>
+        </div>
+      </div>
+      <div style={panelStyle}>
+        <div style={labelStyle}>Aktywności</div>
+        <div style={{ fontSize: '11px' }}>
+          <div>&#127993; {hunting} poluje</div>
+          <div>&#127807; {gathering} zbiera</div>
+        </div>
       </div>
     </div>
   );
