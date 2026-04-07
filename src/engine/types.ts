@@ -59,11 +59,11 @@ export const ENERGY_DRAIN_INTERVAL = 2; // lose 1 energy every N ticks
 export const ENERGY_MEAT = 30;
 export const ENERGY_PLANT = 15;
 export const ENERGY_MATING_MIN = 50;
-export const HUNGER_THRESHOLD = 40;
+export const HUNGER_THRESHOLD = 60; // start seeking food earlier
 export const CHILD_AGE = 10; // children don't lose energy (years)
 
 // Resources
-export const BASE_FOOD_SENSE_RANGE = 1; // added to perception for food sensing
+export const BASE_FOOD_SENSE_RANGE = 3; // added to perception for food sensing
 export const ANIMAL_COUNT = 15;
 export const PLANT_COUNT = 40;
 export const ANIMAL_RESPAWN_INTERVAL = 10;
