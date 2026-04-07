@@ -63,8 +63,8 @@ export interface Animal {
 
 export const ANIMAL_REPRO_INTERVAL = 10; // ticks between reproduction attempts
 export const ANIMAL_REPRO_RANGE = 2;     // max animals on nearby tiles to reproduce
-export const ANIMAL_MAX = 100;           // carrying capacity
-export const ANIMAL_FLEE_RANGE = 2;      // animals flee humans within this range
+export const ANIMAL_MAX = 40;            // carrying capacity
+export const ANIMAL_FLEE_RANGE = 3;      // animals flee humans within this range
 
 export interface Plant {
   id: string;
@@ -101,7 +101,7 @@ export const CHILD_AGE = 10; // children don't lose energy (years)
 
 // Resources
 export const BASE_FOOD_SENSE_RANGE = 3; // added to perception for food sensing
-export const ANIMAL_COUNT = 30;
+export const ANIMAL_COUNT = 15;
 export const PLANT_COUNT = 30;
 export const PLANT_RESPAWN_INTERVAL = 5; // 1 new plant every N ticks
 

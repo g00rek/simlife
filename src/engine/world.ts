@@ -775,13 +775,33 @@ export function tick(state: WorldState): WorldState {
       const myVillage = getVillage(entity.tribe);
       const inOwnVillage = myVillage && isInVillage(entity.position, myVillage);
 
-      // Priority 0: Return to village if outside and not hungry (or child)
-      if (myVillage && !inOwnVillage && (!isHungry(entity) || isChild(entity))) {
+      // Priority 0: Return to village (children always, females when fed, males only when seeking mate)
+      const shouldReturnHome = myVillage && !inOwnVillage && (
+        isChild(entity) ||
+        (entity.gender === 'female' && !isHungry(entity)) ||
+        (entity.gender === 'male' && !isHungry(entity) && isReproductive(entity) && entity.energy >= ENERGY_MATING_MIN && (getVillage(entity.tribe)?.meatStore ?? 0) >= PANTRY_MATING_MIN)
+      );
+      if (shouldReturnHome && myVillage) {
         target = stepToward(entity.position, myVillage.center, biomes, gridSize, entity.tribe, updatedVillages);
       }
 
-      // Priority 1: Hungry + outside village → seek food
-      if (!target && isHungry(entity) && !isChild(entity) && !inOwnVillage) {
+      // Priority 0b: Adult male in village + not seeking mate → go hunt
+      if (!target && inOwnVillage && entity.gender === 'male' && !isChild(entity)) {
+        const wantsMate = isReproductive(entity) && entity.energy >= ENERGY_MATING_MIN
+          && (getVillage(entity.tribe)?.meatStore ?? 0) >= PANTRY_MATING_MIN;
+        if (!wantsMate) {
+          // Walk toward edge of village to go hunt
+          const dx = entity.position.x - myVillage!.center.x;
+          const dy = entity.position.y - myVillage!.center.y;
+          const awayX = entity.position.x + Math.sign(dx || (Math.random() < 0.5 ? 1 : -1));
+          const awayY = entity.position.y + Math.sign(dy || (Math.random() < 0.5 ? 1 : -1));
+          const away = { x: awayX, y: awayY };
+          if (isValidMove(away, biomes, gridSize)) target = away;
+        }
+      }
+
+      // Priority 1: Outside village → seek food
+      if (!target && !isChild(entity) && !inOwnVillage) {
         if (entity.gender === 'male') {
           let bestDist = senseFood + 1;
           for (const a of animals) {
