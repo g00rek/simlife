@@ -1,10 +1,8 @@
 import { useRef, useEffect } from 'react';
 import type { WorldState } from '../engine/types';
 
-const MALE_COLOR = '#7aa2f7';
-const FEMALE_COLOR = '#f7768e';
-const MATING_MALE_COLOR = '#bb9af7';
-const MATING_FEMALE_COLOR = '#ff9e64';
+const MALE_ICON = '👨';
+const FEMALE_ICON = '👩';
 const GRID_BG = '#1a1b26';
 const GRID_LINE = '#2a2b36';
 
@@ -57,7 +55,7 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
     }
 
     // Collect draw data per entity
-    const draws: Array<{ cx: number; cy: number; radius: number; color: string; age: number }> = [];
+    const draws: Array<{ cx: number; cy: number; icon: string; age: number; mating: boolean }> = [];
     const matingHearts: Array<{ cx: number; cy: number }> = [];
 
     for (const [, group] of tileMap) {
@@ -68,7 +66,6 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
         const entity = group[i];
         const baseCx = entity.position.x * cellSize + cellSize / 2;
         const baseCy = entity.position.y * cellSize + cellSize / 2;
-        const radius = cellSize * 0.4;
 
         let cx = baseCx;
         let cy = baseCy;
@@ -82,14 +79,12 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
           cy = baseCy + Math.sin(angle) * dist;
         }
 
-        let color: string;
-        if (entity.state === 'mating') {
-          color = entity.gender === 'male' ? MATING_MALE_COLOR : MATING_FEMALE_COLOR;
-        } else {
-          color = entity.gender === 'male' ? MALE_COLOR : FEMALE_COLOR;
-        }
-
-        draws.push({ cx, cy, radius, color, age: entity.age });
+        draws.push({
+          cx, cy,
+          icon: entity.gender === 'male' ? MALE_ICON : FEMALE_ICON,
+          age: entity.age,
+          mating: entity.state === 'mating',
+        });
       }
 
       if (hasMating && count >= 2) {
@@ -100,33 +95,34 @@ export function GridCanvas({ world, size }: GridCanvasProps) {
       }
     }
 
-    // Draw circles
-    for (const { cx, cy, radius, color } of draws) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-    }
-
-    // Draw age labels on each entity
-    const fontSize = Math.max(7, Math.floor(cellSize * 0.32));
-    ctx.font = `bold ${fontSize}px sans-serif`;
+    // Draw person icons
+    const iconSize = Math.max(10, Math.floor(cellSize * 0.55));
+    ctx.font = `${iconSize}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fff';
+    for (const { cx, cy, icon } of draws) {
+      ctx.fillText(icon, cx, cy - cellSize * 0.1);
+    }
+
+    // Draw age below icon
+    const ageSize = Math.max(6, Math.floor(cellSize * 0.28));
+    ctx.font = `bold ${ageSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#aaa';
     for (const { cx, cy, age } of draws) {
-      ctx.fillText(String(age), cx, cy);
+      ctx.fillText(String(age), cx, cy + cellSize * 0.15);
     }
 
     // Draw hearts for mating pairs
     if (matingHearts.length < 200) {
-      const heartSize = Math.max(8, Math.floor(cellSize * 0.4));
+      const heartSize = Math.max(8, Math.floor(cellSize * 0.35));
       ctx.font = `${heartSize}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
       ctx.fillStyle = '#f7768e';
       for (const { cx, cy } of matingHearts) {
-        ctx.fillText('❤', cx, cy - cellSize * 0.35);
+        ctx.fillText('❤', cx, cy - cellSize * 0.4);
       }
     }
   }, [world, size]);
