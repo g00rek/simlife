@@ -21,8 +21,8 @@ export function Controls({ running, speed, onToggle, onSpeedChange }: ControlsPr
           min={50}
           max={1000}
           step={50}
-          value={speed}
-          onChange={e => onSpeedChange(Number(e.target.value))}
+          value={1050 - speed}
+          onChange={e => onSpeedChange(1050 - Number(e.target.value))}
           style={{ width: '100%' }}
         />
       </div>
