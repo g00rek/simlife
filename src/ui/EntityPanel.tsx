@@ -18,8 +18,12 @@ export function EntityPanel({ entity, onClose }: EntityPanelProps) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
         <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: color }} />
-        <span style={{ fontSize: '14px', fontWeight: 'bold' }}>
-          {entity.gender === 'male' ? '♂' : '♀'} {entity.id}
+        <span style={{ fontSize: '14px', fontWeight: 'bold' }}>{entity.id}</span>
+      </div>
+      <div style={rowStyle}>
+        <span style={dimStyle}>Sex:</span>
+        <span style={{ color: entity.gender === 'male' ? '#7aa2f7' : '#f7768e', fontWeight: 'bold' }}>
+          {entity.gender === 'male' ? '♂ Male' : '♀ Female'}
         </span>
       </div>
       <div style={rowStyle}>
