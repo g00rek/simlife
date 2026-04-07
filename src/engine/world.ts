@@ -827,8 +827,9 @@ export function tick(state: WorldState): WorldState {
         }
       }
 
-      // Priority 2b: Adult male in village, no mate found → go hunt
-      if (!target && inOwnVillage && entity.gender === 'male' && !isChild(entity) && myVillage) {
+      // Priority 2b: Adult male in village, no mate found → go hunt ONLY if pantry low
+      const pantryLow = myVillage && (myVillage.meatStore < 10 || myVillage.plantStore < 5);
+      if (!target && inOwnVillage && entity.gender === 'male' && !isChild(entity) && myVillage && pantryLow) {
         const dx = entity.position.x - myVillage.center.x;
         const dy = entity.position.y - myVillage.center.y;
         const awayX = entity.position.x + Math.sign(dx || (Math.random() < 0.5 ? 1 : -1));
