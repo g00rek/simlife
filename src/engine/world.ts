@@ -6,9 +6,9 @@ import {
   ENERGY_MATING_MIN, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   BASE_FOOD_SENSE_RANGE, ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
   PLANT_GROW_TIME, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
-  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS, PANTRY_MATING_MIN,
+  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS, PANTRY_MATING_MIN, VILLAGE_OPTIMAL_POP,
 } from './types';
-import { generateBiomeGrid, isPassable } from './biomes';
+import { generateBiomeGrid, isPassable, isPassableForRonin } from './biomes';
 // randomStep from movement.ts still used by randomStepBiome as fallback concept
 // but we now use randomStepBiome directly
 
@@ -178,6 +178,15 @@ function getVillageAt(pos: Position, villages: Village[]): Village | undefined {
   return villages.find(v => isInVillage(pos, v));
 }
 
+function matingEnergyCost(tribe: TribeId, entities: Entity[]): number {
+  if (tribe < 0) return ENERGY_MATING_MIN;
+  const tribePop = entities.filter(e => e.tribe === tribe).length;
+  if (tribePop <= VILLAGE_OPTIMAL_POP) return ENERGY_MATING_MIN;
+  // Over capacity: exponential increase in required energy
+  const overcrowding = tribePop / VILLAGE_OPTIMAL_POP;
+  return Math.min(ENERGY_MAX, Math.round(ENERGY_MATING_MIN * overcrowding));
+}
+
 function canEnterTile(pos: Position, tribe: TribeId, villages: Village[]): boolean {
   const v = getVillageAt(pos, villages);
   if (!v) return true; // not in any village — free land
@@ -194,7 +203,9 @@ function randomPassablePos(biomes: Biome[][], gridSize: number): Position {
 
 function isValidMove(pos: Position, biomes: Biome[][], gridSize: number, tribe?: TribeId, villages?: Village[]): boolean {
   if (pos.x < 0 || pos.x >= gridSize || pos.y < 0 || pos.y >= gridSize) return false;
-  if (!isPassable(biomes[pos.y][pos.x])) return false;
+  // Ronins can traverse mountains
+  const passable = tribe === -1 ? isPassableForRonin(biomes[pos.y][pos.x]) : isPassable(biomes[pos.y][pos.x]);
+  if (!passable) return false;
   if (tribe !== undefined && villages) {
     if (!canEnterTile(pos, tribe, villages)) return false;
   }
@@ -341,6 +352,7 @@ function detectInteractions(
   gridSize: number,
   skipIds: Set<string>,
   villages: Village[],
+  allEntities: Entity[],
 ): Entity[] {
   const tileGroups = new Map<number, Entity[]>();
   for (const e of entities) {
@@ -379,14 +391,15 @@ function detectInteractions(
     }
     if (!fightStarted && idleMales.length >= 1 && idleFemales.length >= 1) {
       const male = idleMales.find(e => {
-        if (!isReproductive(e) || newActionIds.has(e.id) || e.energy < ENERGY_MATING_MIN) return false;
-        // Check food availability: village pantry or personal meat
+        const minEnergy = matingEnergyCost(e.tribe, allEntities);
+        if (!isReproductive(e) || newActionIds.has(e.id) || e.energy < minEnergy) return false;
         const v = e.tribe >= 0 ? villages.find(vl => vl.tribe === e.tribe) : undefined;
         return v ? v.meatStore >= PANTRY_MATING_MIN : e.meat > 0;
       });
-      const female = idleFemales.find(e =>
-        isReproductive(e) && e.energy >= ENERGY_MATING_MIN
-      );
+      const female = idleFemales.find(e => {
+        const minEnergy = matingEnergyCost(e.tribe, allEntities);
+        return isReproductive(e) && e.energy >= minEnergy;
+      });
       if (male && female) {
         newActionIds.add(male.id);
         newActionIds.add(female.id);
@@ -717,7 +730,7 @@ export function tick(state: WorldState): WorldState {
   }
 
   // --- Step 2: Detect interactions (pre-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages);
+  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, entities);
 
   // --- Step 2b: Detect hunting/gathering ---
   for (let i = 0; i < entities.length; i++) {
@@ -891,7 +904,7 @@ export function tick(state: WorldState): WorldState {
   }
 
   // --- Step 4: Detect interactions (post-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages);
+  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, entities);
 
   // --- Step 4b: Detect hunting/gathering (post-movement) ---
   for (let i = 0; i < entities.length; i++) {
@@ -952,6 +965,57 @@ export function tick(state: WorldState): WorldState {
           break;
         }
       }
+    }
+  }
+
+  // --- Step 6: Ronin settlement — 3+ ronins on mountain tile → found new village ---
+  const roninsByTile = new Map<number, Entity[]>();
+  for (const e of entities) {
+    if (e.tribe !== -1) continue;
+    const key = e.position.y * gridSize + e.position.x;
+    const group = roninsByTile.get(key) ?? [];
+    group.push(e);
+    roninsByTile.set(key, group);
+  }
+
+  for (const [key, group] of roninsByTile) {
+    if (group.length < 3) continue;
+    const x = key % gridSize;
+    const y = Math.floor(key / gridSize);
+    if (biomes[y][x] !== 'mountain') continue;
+    // Already a village here?
+    if (getVillageAt({ x, y }, updatedVillages)) continue;
+
+    // Found new tribe!
+    const newTribeId = updatedVillages.length;
+    const r = 50 + Math.floor(Math.random() * 150);
+    const g = 50 + Math.floor(Math.random() * 150);
+    const b = 50 + Math.floor(Math.random() * 150);
+    updatedVillages.push({
+      tribe: newTribeId,
+      center: { x, y },
+      radius: 3, // small settlement
+      color: [r, g, b] as RGB,
+      name: `Tribe ${newTribeId}`,
+      meatStore: 0,
+      plantStore: 0,
+    });
+    // Clear mountain around settlement center for passability
+    for (let dy = -3; dy <= 3; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        if (Math.abs(dx) + Math.abs(dy) <= 3) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+            if (biomes[ny][nx] === 'mountain') biomes[ny][nx] = 'plains';
+          }
+        }
+      }
+    }
+    // Assign ronins to new tribe
+    for (const e of group) {
+      const idx = entities.indexOf(e);
+      if (idx >= 0) entities[idx] = { ...entities[idx], tribe: newTribeId };
     }
   }
 

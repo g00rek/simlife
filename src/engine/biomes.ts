@@ -85,3 +85,7 @@ export function generateBiomeGrid(gridSize: number): Biome[][] {
 export function isPassable(biome: Biome): boolean {
   return biome === 'plains' || biome === 'forest';
 }
+
+export function isPassableForRonin(biome: Biome): boolean {
+  return biome === 'plains' || biome === 'forest' || biome === 'mountain';
+}

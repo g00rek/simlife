@@ -18,7 +18,7 @@ export interface Traits {
   twinChance: number;   // 0-1: chance of multiple births (0=always single, 1=always multiples)
 }
 
-export type TribeId = -1 | 0 | 1 | 2; // -1 = ronin (tribeless)
+export type TribeId = number; // -1 = ronin, 0/1/2 = starting tribes, 3+ = ronin settlements
 
 export interface Village {
   tribe: TribeId;
@@ -31,6 +31,7 @@ export interface Village {
 }
 
 export const PANTRY_MATING_MIN = 3; // min meat in pantry to allow mating
+export const VILLAGE_OPTIMAL_POP = 12; // above this, mating energy cost rises
 
 export interface Entity {
   id: string;
