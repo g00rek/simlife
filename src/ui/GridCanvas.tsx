@@ -200,7 +200,7 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
     }
 
     // Draw person figures
-    for (const { cx, cy, color, gender } of draws) {
+    for (const { cx, cy, color, gender, child } of draws) {
       drawPerson(ctx, cx, cy, cellSize, gender, color, child);
     }
 
