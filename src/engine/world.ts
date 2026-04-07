@@ -302,9 +302,14 @@ export function createWorld(options: CreateWorldOptions): WorldState {
 
   const animals: Animal[] = [];
   for (let i = 0; i < ANIMAL_COUNT; i++) {
+    let pos: Position;
+    for (let attempt = 0; ; attempt++) {
+      pos = randomPassablePos(biomes, gridSize);
+      if (!getVillageAt(pos, villages) || attempt > 30) break;
+    }
     animals.push({
       id: generateId('a'),
-      position: randomPassablePos(biomes, gridSize),
+      position: pos,
       reproTimer: Math.floor(Math.random() * ANIMAL_REPRO_INTERVAL),
     });
   }
@@ -696,7 +701,10 @@ export function tick(state: WorldState): WorldState {
         ready[1].reproTimer = ANIMAL_REPRO_INTERVAL;
         const px = key % gridSize;
         const py = Math.floor(key / gridSize);
-        const ns = neighbors({ x: px, y: py }, gridSize);
+        const ns = neighbors({ x: px, y: py }, gridSize).filter(
+          n => isPassable(biomes[n.y][n.x]) && !getVillageAt(n, updatedVillages)
+        );
+        if (ns.length === 0) continue;
         const spot = ns[Math.floor(Math.random() * ns.length)];
         babyAnimals.push({
           id: generateId('a'),
