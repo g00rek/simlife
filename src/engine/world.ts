@@ -56,6 +56,7 @@ function randomTraits(): Traits {
     metabolism: +(0.8 + Math.random() * 0.4).toFixed(2),     // 0.8-1.2
     aggression: Math.floor(Math.random() * 6) + 2,          // 2-7
     fertility: +(0.8 + Math.random() * 0.4).toFixed(2),     // 0.8-1.2
+    twinChance: +(Math.random() * 0.1).toFixed(2),         // 0-0.1 (low on start)
   };
 }
 
@@ -74,6 +75,7 @@ function inheritTraits(a: Traits, b: Traits): Traits {
     metabolism: inheritTrait(a.metabolism, b.metabolism, 0.5, 2.0, 0.1),
     aggression: inheritTrait(a.aggression, b.aggression, 0, 10, 1),
     fertility: inheritTrait(a.fertility, b.fertility, 0.5, 2.0, 0.1),
+    twinChance: inheritTrait(a.twinChance, b.twinChance, 0, 0.5, 0.05),
   };
   // Round integer traits
   traits.strength = Math.round(traits.strength);
@@ -337,29 +339,43 @@ export function tick(state: WorldState): WorldState {
         resolvedIds.add(male.id);
         resolvedIds.add(female.id);
 
-        const ns = neighbors(male.position, gridSize);
-        const free = ns.filter(n => grid[n.y][n.x] < 2);
-        const birthPos = free.length > 0
-          ? free[Math.floor(Math.random() * free.length)]
-          : { ...male.position };
+        // Determine number of babies: twinChance from mother
+        const tc = female.traits.twinChance;
+        let babyCount = 1;
+        if (Math.random() < tc) {
+          // Multiple birth: weighted — twins most common, triplets rare, quads very rare
+          const roll = Math.random();
+          if (roll < 0.7) babyCount = 2;       // twins
+          else if (roll < 0.92) babyCount = 3;  // triplets
+          else babyCount = 4;                    // quads
+        }
 
-        const babyTraits = inheritTraits(male.traits, female.traits);
-        babies.push({
-          id: generateId('e'),
-          position: birthPos,
-          gender: Math.random() < 0.5 ? 'male' : 'female',
-          state: 'idle',
-          stateTimer: 0,
-          age: 0,
-          maxAge: randomMaxAge(babyTraits.fertility),
-          color: traitsToColor(babyTraits),
-          energy: ENERGY_START,
-          traits: babyTraits,
-          meat: 0,
-        });
-        const baby = babies[babies.length - 1];
-        log.push({ tick: tickNum, type: 'birth', entityId: baby.id, gender: baby.gender, age: 0 });
-        grid[birthPos.y][birthPos.x]++;
+        const ns = neighbors(male.position, gridSize);
+
+        for (let b = 0; b < babyCount; b++) {
+          const free = ns.filter(n => grid[n.y][n.x] < 2);
+          const birthPos = free.length > 0
+            ? free[Math.floor(Math.random() * free.length)]
+            : { ...male.position };
+
+          const babyTraits = inheritTraits(male.traits, female.traits);
+          babies.push({
+            id: generateId('e'),
+            position: birthPos,
+            gender: Math.random() < 0.5 ? 'male' : 'female',
+            state: 'idle',
+            stateTimer: 0,
+            age: 0,
+            maxAge: randomMaxAge(babyTraits.fertility),
+            color: traitsToColor(babyTraits),
+            energy: ENERGY_START,
+            traits: babyTraits,
+            meat: 0,
+          });
+          const baby = babies[babies.length - 1];
+          log.push({ tick: tickNum, type: 'birth', entityId: baby.id, gender: baby.gender, age: 0 });
+          grid[birthPos.y][birthPos.x]++;
+        }
       }
     } else if (action === 'fighting') {
       // Strength-weighted fight: stronger has higher chance of winning

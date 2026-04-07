@@ -15,6 +15,7 @@ export interface Traits {
   metabolism: number;    // 0.5-2.0: lower = less energy drain but slower
   aggression: number;    // 0-10: 0 = always flee, 10 = always fight
   fertility: number;     // 0.5-2.0: higher = shorter mating time but shorter maxAge
+  twinChance: number;   // 0-1: chance of multiple births (0=always single, 1=always multiples)
 }
 
 export interface Entity {

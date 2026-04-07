@@ -76,6 +76,11 @@ export function EntityPanel({ entity, onClose }: EntityPanelProps) {
         <Bar value={entity.traits.fertility} max={2} color="#bb9af7" />
       </div>
       <div style={rowStyle}>
+        <span style={dimStyle}>Twin gene:</span>
+        <span>{Math.round(entity.traits.twinChance * 100)}%</span>
+        <Bar value={entity.traits.twinChance} max={0.5} color="#73daca" />
+      </div>
+      <div style={rowStyle}>
         <span style={dimStyle}>Position:</span>
         <span>{entity.position.x},{entity.position.y}</span>
       </div>
