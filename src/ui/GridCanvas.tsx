@@ -93,12 +93,12 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
       ctx.stroke();
     }
 
-    // --- Draw plants (green dots) ---
-    ctx.fillStyle = '#4caf50';
+    // --- Draw plants (green = growing, red = ready) ---
     for (const plant of world.plants) {
       const cx = plant.position.x * cellSize + cellSize / 2;
       const cy = plant.position.y * cellSize + cellSize / 2;
-      const r = cellSize * 0.15;
+      const r = plant.mature ? cellSize * 0.18 : cellSize * 0.12;
+      ctx.fillStyle = plant.mature ? '#e53935' : '#4caf50';
       ctx.beginPath();
       ctx.arc(cx, cy + cellSize * 0.3, r, 0, Math.PI * 2);
       ctx.fill();

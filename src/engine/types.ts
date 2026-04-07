@@ -38,7 +38,12 @@ export interface Animal {
 export interface Plant {
   id: string;
   position: Position;
+  mature: boolean; // green = growing, red = ready to harvest
+  growTimer: number; // ticks until mature
 }
+
+export const PLANT_GROW_TIME = 20; // ticks to mature
+export const FIGHT_MIN_AGE = 16; // years — children don't fight
 
 // Population
 export const MIN_REPRODUCTIVE_AGE = 18;
@@ -57,7 +62,7 @@ export const ENERGY_MAX = 100;
 export const ENERGY_START = 80;
 export const ENERGY_DRAIN_INTERVAL = 2; // lose 1 energy every N ticks
 export const ENERGY_MEAT = 30;
-export const ENERGY_PLANT = 15;
+export const ENERGY_PLANT = 25;
 export const ENERGY_MATING_MIN = 50;
 export const HUNGER_THRESHOLD = 60; // start seeking food earlier
 export const CHILD_AGE = 10; // children don't lose energy (years)

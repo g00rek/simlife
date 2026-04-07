@@ -5,6 +5,7 @@ import {
   ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
   ENERGY_MATING_MIN, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   BASE_FOOD_SENSE_RANGE, ANIMAL_COUNT, PLANT_COUNT, ANIMAL_RESPAWN_INTERVAL, PLANT_RESPAWN_INTERVAL,
+  PLANT_GROW_TIME, FIGHT_MIN_AGE,
 } from './types';
 import { randomStep } from './movement';
 
@@ -159,7 +160,14 @@ export function createWorld(options: CreateWorldOptions): WorldState {
 
   const plants: Plant[] = [];
   for (let i = 0; i < PLANT_COUNT; i++) {
-    plants.push({ id: generateId('p'), position: randomPos(gridSize) });
+    // Half start mature, half growing
+    const mature = i < PLANT_COUNT / 2;
+    plants.push({
+      id: generateId('p'),
+      position: randomPos(gridSize),
+      mature,
+      growTimer: mature ? 0 : Math.floor(Math.random() * PLANT_GROW_TIME),
+    });
   }
 
   return { entities, animals, plants, tick: 0, gridSize, log: [] };
@@ -186,9 +194,11 @@ function detectInteractions(
     const idleMales = group.filter(e => e.gender === 'male' && e.state === 'idle' && !skipIds.has(e.id));
     const idleFemales = group.filter(e => e.gender === 'female' && e.state === 'idle' && !skipIds.has(e.id));
 
-    if (idleMales.length >= 2) {
-      newActionIds.add(idleMales[0].id);
-      newActionIds.add(idleMales[1].id);
+    // Only adult males fight (age >= FIGHT_MIN_AGE)
+    const fightableMales = idleMales.filter(e => ageInYears(e) >= FIGHT_MIN_AGE);
+    if (fightableMales.length >= 2) {
+      newActionIds.add(fightableMales[0].id);
+      newActionIds.add(fightableMales[1].id);
     } else if (idleMales.length >= 1 && idleFemales.length >= 1) {
       const male = idleMales.find(e =>
         isReproductive(e) && !newActionIds.has(e.id) && e.energy >= ENERGY_MATING_MIN
@@ -397,7 +407,7 @@ export function tick(state: WorldState): WorldState {
     // Females gather plants on same tile
     if (e.gender === 'female' && isHungry(e)) {
       const plant = plants.find(p =>
-        p.position.x === e.position.x && p.position.y === e.position.y
+        p.mature && p.position.x === e.position.x && p.position.y === e.position.y
       );
       if (plant) {
         entities[i] = { ...e, state: 'gathering', stateTimer: GATHERING_DURATION };
@@ -444,6 +454,7 @@ export function tick(state: WorldState): WorldState {
         } else {
           let bestDist = senseFood + 1;
           for (const p of plants) {
+            if (!p.mature) continue;
             const d = manhattan(entity.position, p.position);
             if (d > 0 && d <= senseFood && d < bestDist) {
               bestDist = d;
@@ -510,7 +521,7 @@ export function tick(state: WorldState): WorldState {
 
     if (e.gender === 'female' && isHungry(e)) {
       const plant = plants.find(p =>
-        p.position.x === e.position.x && p.position.y === e.position.y
+        p.mature && p.position.x === e.position.x && p.position.y === e.position.y
       );
       if (plant) {
         entities[i] = { ...e, state: 'gathering', stateTimer: GATHERING_DURATION };
@@ -525,12 +536,24 @@ export function tick(state: WorldState): WorldState {
     position: randomStep(a.position, gridSize),
   }));
 
-  // --- Step 6: Respawn resources ---
+  // --- Step 6: Grow plants + respawn resources ---
+  plants = plants.map(p => {
+    if (p.mature) return p;
+    const timer = p.growTimer - 1;
+    if (timer <= 0) return { ...p, mature: true, growTimer: 0 };
+    return { ...p, growTimer: timer };
+  });
+
   if (tickNum % ANIMAL_RESPAWN_INTERVAL === 0) {
     animals.push({ id: generateId('a'), position: randomPos(gridSize) });
   }
   if (tickNum % PLANT_RESPAWN_INTERVAL === 0) {
-    plants.push({ id: generateId('p'), position: randomPos(gridSize) });
+    plants.push({
+      id: generateId('p'),
+      position: randomPos(gridSize),
+      mature: false,
+      growTimer: PLANT_GROW_TIME,
+    });
   }
 
   const fullLog = [...state.log, ...log];
