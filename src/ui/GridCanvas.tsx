@@ -13,8 +13,15 @@ interface GridCanvasProps {
   onClick: (gridX: number, gridY: number) => void;
 }
 
+const TRIBE_COLORS: Record<number, [number, number, number]> = {
+  0: [220, 60, 60],   // Red tribe
+  1: [60, 180, 60],   // Green tribe
+  2: [60, 100, 220],  // Blue tribe
+  [-1]: [180, 140, 60], // Ronin (gold/brown)
+};
+
 function entityColor(entity: Entity): string {
-  const [r, g, b] = entity.color;
+  const [r, g, b] = TRIBE_COLORS[entity.tribe] ?? [150, 150, 150];
   return `rgb(${r},${g},${b})`;
 }
 
