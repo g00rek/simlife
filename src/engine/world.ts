@@ -728,6 +728,9 @@ export function tick(state: WorldState): WorldState {
       const myVillage = getVillage(entity.tribe);
       const inOwnVillage = myVillage && isInVillage(entity.position, myVillage);
 
+      // Children in village → don't move at all
+      if (isChild(entity) && inOwnVillage) break;
+
       // Priority 0: Return to village (children always, females when fed, males only when seeking mate)
       const shouldReturnHome = myVillage && !inOwnVillage && (
         isChild(entity) ||
