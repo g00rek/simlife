@@ -31,7 +31,7 @@ export interface Entity {
   meat: number; // meat portions carried (males only, from hunting)
 }
 
-export const MEAT_PORTIONS_PER_HUNT = 5;
+export const MEAT_PORTIONS_PER_HUNT = 8;
 
 // Traits
 export const TRAIT_ENERGY_COST = 0.15; // extra energy drain per total trait points above baseline
@@ -72,7 +72,7 @@ export const GATHERING_DURATION = 2;
 export const ENERGY_MAX = 100;
 export const ENERGY_START = 80;
 export const ENERGY_DRAIN_INTERVAL = 2; // lose 1 energy every N ticks
-export const ENERGY_MEAT = 30;
+export const ENERGY_MEAT = 40;
 export const ENERGY_PLANT = 25;
 export const ENERGY_MATING_MIN = 50;
 export const HUNGER_THRESHOLD = 60; // start seeking food earlier
