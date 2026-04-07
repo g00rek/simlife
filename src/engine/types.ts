@@ -23,10 +23,14 @@ export type TribeId = -1 | 0 | 1 | 2; // -1 = ronin (tribeless)
 export interface Village {
   tribe: TribeId;
   center: Position;
-  radius: number; // Manhattan radius of village area
+  radius: number;
   color: RGB;
   name: string;
+  meatStore: number;
+  plantStore: number;
 }
+
+export const PANTRY_MATING_MIN = 3; // min meat in pantry to allow mating
 
 export interface Entity {
   id: string;

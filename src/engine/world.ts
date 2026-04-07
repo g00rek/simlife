@@ -6,7 +6,7 @@ import {
   ENERGY_MATING_MIN, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   BASE_FOOD_SENSE_RANGE, ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
   PLANT_GROW_TIME, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
-  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS,
+  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS, PANTRY_MATING_MIN,
 } from './types';
 import { generateBiomeGrid, isPassable } from './biomes';
 // randomStep from movement.ts still used by randomStepBiome as fallback concept
@@ -255,6 +255,8 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     radius: VILLAGE_RADIUS,
     color: tribeColors[i],
     name: tribeNames[i],
+    meatStore: 10, // start with some food
+    plantStore: 10,
   }));
 
   const entities: Entity[] = [];
@@ -328,6 +330,7 @@ function detectInteractions(
   entities: Entity[],
   gridSize: number,
   skipIds: Set<string>,
+  villages: Village[],
 ): Entity[] {
   const tileGroups = new Map<number, Entity[]>();
   for (const e of entities) {
@@ -365,9 +368,12 @@ function detectInteractions(
       }
     }
     if (!fightStarted && idleMales.length >= 1 && idleFemales.length >= 1) {
-      const male = idleMales.find(e =>
-        isReproductive(e) && !newActionIds.has(e.id) && e.energy >= ENERGY_MATING_MIN && e.meat > 0
-      );
+      const male = idleMales.find(e => {
+        if (!isReproductive(e) || newActionIds.has(e.id) || e.energy < ENERGY_MATING_MIN) return false;
+        // Check food availability: village pantry or personal meat
+        const v = e.tribe >= 0 ? villages.find(vl => vl.tribe === e.tribe) : undefined;
+        return v ? v.meatStore >= PANTRY_MATING_MIN : e.meat > 0;
+      });
       const female = idleFemales.find(e =>
         isReproductive(e) && e.energy >= ENERGY_MATING_MIN
       );
@@ -399,6 +405,10 @@ function detectInteractions(
 export function tick(state: WorldState): WorldState {
   const { gridSize, biomes, villages } = state;
   const tickNum = state.tick + 1;
+  const updatedVillages = villages.map(v => ({ ...v }));
+  function getVillage(tribe: TribeId) {
+    return tribe >= 0 ? updatedVillages[tribe] : undefined;
+  }
   let animals = [...state.animals];
   let plants = [...state.plants];
   const log: LogEntry[] = [];
@@ -412,10 +422,20 @@ export function tick(state: WorldState): WorldState {
       const drain = isHungry(a) ? baseDrain * 0.5 : baseDrain;
       a.energy = Math.max(0, a.energy - drain);
     }
-    // Males eat a meat portion when hungry
-    if (a.meat > 0 && isHungry(a)) {
-      a.meat -= 1;
-      a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT);
+    // Hungry → eat from village pantry or personal meat (ronin)
+    if (isHungry(a) && !isChild(a)) {
+      const myV = a.tribe >= 0 ? villages.find(v => v.tribe === a.tribe) : undefined;
+      if (myV && myV.meatStore > 0) {
+        myV.meatStore -= 1;
+        a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT);
+      } else if (myV && myV.plantStore > 0) {
+        myV.plantStore -= 1;
+        a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_PLANT);
+      } else if (a.meat > 0) {
+        // Ronin or empty pantry — personal meat
+        a.meat -= 1;
+        a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT);
+      }
     }
     return a;
   });
@@ -553,6 +573,7 @@ export function tick(state: WorldState): WorldState {
       if (resolvedIds.has(e.id)) {
         let energy = e.energy;
         let meat = e.meat;
+        const myVillage = getVillage(e.tribe);
 
         if (e.state === 'hunting') {
           const hadPrey = animals.some(a =>
@@ -560,26 +581,41 @@ export function tick(state: WorldState): WorldState {
             a.position.y === e.position.y &&
             consumedAnimalIds.has(a.id)
           );
-          if (hadPrey) meat += MEAT_PORTIONS_PER_HUNT;
+          if (hadPrey) {
+            if (myVillage) {
+              myVillage.meatStore += MEAT_PORTIONS_PER_HUNT;
+            } else {
+              meat += MEAT_PORTIONS_PER_HUNT; // ronin keeps it
+            }
+          }
         } else if (e.state === 'gathering') {
           const hadPlant = plants.some(p =>
             p.position.x === e.position.x &&
             p.position.y === e.position.y &&
             consumedPlantIds.has(p.id)
           );
-          if (hadPlant) energy = Math.min(ENERGY_MAX, energy + ENERGY_PLANT);
+          if (hadPlant) {
+            if (myVillage) {
+              myVillage.plantStore += 1;
+            } else {
+              energy = Math.min(ENERGY_MAX, energy + ENERGY_PLANT); // ronin eats directly
+            }
+          }
         } else if (e.state === 'mating') {
           if (e.gender === 'male') {
-            meat = Math.max(0, meat - 1);
+            if (myVillage) {
+              myVillage.meatStore = Math.max(0, myVillage.meatStore - 1);
+            } else {
+              meat = Math.max(0, meat - 1);
+            }
             return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat };
           }
-          // Female → pregnant. Find the male partner on same tile.
           const malePartner = entities.find(
             o => o.id !== e.id && o.gender === 'male' && o.state === 'mating'
               && o.position.x === e.position.x && o.position.y === e.position.y
           );
           const pregTime = Math.max(3, Math.round(PREGNANCY_DURATION / e.traits.fertility));
-          energy = Math.min(ENERGY_MAX, energy + ENERGY_MEAT); // meat gift
+          energy = Math.min(ENERGY_MAX, energy + ENERGY_MEAT); // fed by tribe/partner
           return {
             ...e,
             state: 'pregnant' as const,
@@ -591,7 +627,6 @@ export function tick(state: WorldState): WorldState {
             partnerTribe: malePartner?.tribe ?? e.tribe,
           };
         } else if (e.state === 'pregnant') {
-          // Birth handled above, just go idle and clear partner data
           return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat, partnerTraits: undefined, partnerColor: undefined };
         }
 
@@ -666,7 +701,7 @@ export function tick(state: WorldState): WorldState {
   }
 
   // --- Step 2: Detect interactions (pre-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds);
+  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages);
 
   // --- Step 2b: Detect hunting/gathering ---
   for (let i = 0; i < entities.length; i++) {
@@ -756,8 +791,15 @@ export function tick(state: WorldState): WorldState {
         for (const other of entities) {
           if (other.gender !== oppositeGender || other.state !== 'idle' || !isReproductive(other)) continue;
           if (other.energy < ENERGY_MATING_MIN) continue;
-          if (entity.gender === 'female' && other.meat <= 0) continue;
-          if (entity.gender === 'male' && entity.meat <= 0) continue;
+          // Check food for mating: village pantry or personal meat
+          if (entity.gender === 'female') {
+            const ov = other.tribe >= 0 ? updatedVillages[other.tribe] : undefined;
+            if (!(ov ? ov.meatStore >= PANTRY_MATING_MIN : other.meat > 0)) continue;
+          }
+          if (entity.gender === 'male') {
+            const mv = entity.tribe >= 0 ? updatedVillages[entity.tribe] : undefined;
+            if (!(mv ? mv.meatStore >= PANTRY_MATING_MIN : entity.meat > 0)) continue;
+          }
           const d = manhattan(entity.position, other.position);
           if (d <= 0 || d > senseMate) continue;
           // Sexual selection: females prefer strong males with lots of meat
@@ -791,7 +833,7 @@ export function tick(state: WorldState): WorldState {
   }
 
   // --- Step 4: Detect interactions (post-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds);
+  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages);
 
   // --- Step 4b: Detect hunting/gathering (post-movement) ---
   for (let i = 0; i < entities.length; i++) {
@@ -855,5 +897,5 @@ export function tick(state: WorldState): WorldState {
   }
 
   const fullLog = [...state.log, ...log];
-  return { entities, animals, plants, biomes, villages, tick: tickNum, gridSize, log: fullLog };
+  return { entities, animals, plants, biomes, villages: updatedVillages, tick: tickNum, gridSize, log: fullLog };
 }
