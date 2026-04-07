@@ -1,4 +1,5 @@
 import type { Entity } from '../engine/types';
+import { HUNGER_THRESHOLD, ENERGY_MATING_MIN, CHILD_AGE, MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE } from '../engine/types';
 import { ageInYears } from '../engine/world';
 
 interface EntityPanelProps {
@@ -23,7 +24,7 @@ export function EntityPanel({ entity, onClose }: EntityPanelProps) {
       </div>
       <div style={rowStyle}>
         <span style={dimStyle}>State:</span>
-        <span>{stateLabel(entity.state)}</span>
+        <span>{stateLabel(entity)}</span>
       </div>
       <div style={rowStyle}>
         <span style={dimStyle}>Age:</span>
@@ -75,14 +76,25 @@ function Bar({ value, max, color }: { value: number; max: number; color: string 
   );
 }
 
-function stateLabel(state: string): string {
-  switch (state) {
-    case 'idle': return 'Idle';
+function stateLabel(entity: Entity): string {
+  switch (entity.state) {
     case 'mating': return '❤ Mating';
     case 'fighting': return '⚔ Fighting';
     case 'hunting': return '🏹 Hunting';
     case 'gathering': return '🌿 Gathering';
-    default: return state;
+    case 'idle': {
+      const years = ageInYears(entity);
+      if (years < CHILD_AGE) return '👶 Child';
+      if (entity.energy < HUNGER_THRESHOLD) {
+        return entity.gender === 'male' ? '🔍 Seeking prey' : '🔍 Seeking plants';
+      }
+      if (years >= MIN_REPRODUCTIVE_AGE && years <= MAX_REPRODUCTIVE_AGE && entity.energy >= ENERGY_MATING_MIN) {
+        if (entity.gender === 'male' && entity.meat > 0) return '💑 Seeking mate';
+        if (entity.gender === 'female') return '💑 Seeking mate';
+      }
+      return '🚶 Wandering';
+    }
+    default: return entity.state;
   }
 }
 
