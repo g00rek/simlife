@@ -667,68 +667,7 @@ export function tick(state: WorldState): WorldState {
   animals = animals.filter(a => !consumedAnimalIds.has(a.id));
   plants = plants.filter(p => !consumedPlantIds.has(p.id));
 
-  // --- Step 1b: Move animals (flee from humans) + tick cooldowns ---
-  animals = animals.map(a => {
-    let newPos: Position;
-    // Check for nearest human within flee range
-    let nearestHumanDist = ANIMAL_FLEE_RANGE + 1;
-    let nearestHumanPos: Position | null = null;
-    for (const e of entities) {
-      const d = manhattan(a.position, e.position);
-      if (d > 0 && d <= ANIMAL_FLEE_RANGE && d < nearestHumanDist) {
-        nearestHumanDist = d;
-        nearestHumanPos = e.position;
-      }
-    }
-    if (nearestHumanPos) {
-      // Flee: step away from human
-      const dx = a.position.x - nearestHumanPos.x;
-      const dy = a.position.y - nearestHumanPos.y;
-      const flee = Math.abs(dx) >= Math.abs(dy)
-        ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
-        : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
-      newPos = (isValidMove(flee, biomes, gridSize) && !getVillageAt(flee, updatedVillages))
-        ? flee : randomStepBiome(a.position, gridSize, biomes);
-    } else {
-      newPos = randomStepBiome(a.position, gridSize, biomes);
-    }
-    // Don't enter villages
-    if (getVillageAt(newPos, updatedVillages)) newPos = a.position;
-    return { ...a, position: newPos, reproTimer: Math.max(0, a.reproTimer - 1) };
-  });
-
-  // --- Step 1c: Reproduce animals (two ready on same tile → offspring) ---
-  if (animals.length < ANIMAL_MAX) {
-    const animalTiles = new Map<number, Animal[]>();
-    for (const a of animals) {
-      const key = a.position.y * gridSize + a.position.x;
-      const group = animalTiles.get(key) ?? [];
-      group.push(a);
-      animalTiles.set(key, group);
-    }
-    const babyAnimals: Animal[] = [];
-    for (const [key, group] of animalTiles) {
-      const ready = group.filter(a => a.reproTimer === 0);
-      if (ready.length >= 2 && animals.length + babyAnimals.length < ANIMAL_MAX) {
-        // Two ready animals met → baby, both get cooldown
-        ready[0].reproTimer = ANIMAL_REPRO_INTERVAL;
-        ready[1].reproTimer = ANIMAL_REPRO_INTERVAL;
-        const px = key % gridSize;
-        const py = Math.floor(key / gridSize);
-        const ns = neighbors({ x: px, y: py }, gridSize).filter(
-          n => isPassable(biomes[n.y][n.x]) && !getVillageAt(n, updatedVillages)
-        );
-        if (ns.length === 0) continue;
-        const spot = ns[Math.floor(Math.random() * ns.length)];
-        babyAnimals.push({
-          id: generateId('a'),
-          position: spot,
-          reproTimer: ANIMAL_REPRO_INTERVAL,
-        });
-      }
-    }
-    animals.push(...babyAnimals);
-  }
+  // (Animals move after human movement + hunting detection — see step 5)
 
   // --- Step 2: Detect interactions (pre-movement) ---
   entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, entities);
@@ -934,7 +873,66 @@ export function tick(state: WorldState): WorldState {
     }
   }
 
-  // --- Step 5: Grow plants + respawn resources ---
+  // --- Step 5: Move animals (AFTER humans so hunters can catch them) ---
+  animals = animals.map(a => {
+    let newPos: Position;
+    let nearestHumanDist = ANIMAL_FLEE_RANGE + 1;
+    let nearestHumanPos: Position | null = null;
+    for (const e of entities) {
+      const d = manhattan(a.position, e.position);
+      if (d > 0 && d <= ANIMAL_FLEE_RANGE && d < nearestHumanDist) {
+        nearestHumanDist = d;
+        nearestHumanPos = e.position;
+      }
+    }
+    if (nearestHumanPos) {
+      const dx = a.position.x - nearestHumanPos.x;
+      const dy = a.position.y - nearestHumanPos.y;
+      const flee = Math.abs(dx) >= Math.abs(dy)
+        ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
+        : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
+      newPos = (isValidMove(flee, biomes, gridSize) && !getVillageAt(flee, updatedVillages))
+        ? flee : randomStepBiome(a.position, gridSize, biomes);
+    } else {
+      newPos = randomStepBiome(a.position, gridSize, biomes);
+    }
+    if (getVillageAt(newPos, updatedVillages)) newPos = a.position;
+    return { ...a, position: newPos, reproTimer: Math.max(0, a.reproTimer - 1) };
+  });
+
+  // --- Step 5b: Reproduce animals ---
+  if (animals.length < ANIMAL_MAX) {
+    const animalTiles = new Map<number, Animal[]>();
+    for (const a of animals) {
+      const key = a.position.y * gridSize + a.position.x;
+      const group = animalTiles.get(key) ?? [];
+      group.push(a);
+      animalTiles.set(key, group);
+    }
+    const babyAnimals: Animal[] = [];
+    for (const [key, group] of animalTiles) {
+      const ready = group.filter(a => a.reproTimer === 0);
+      if (ready.length >= 2 && animals.length + babyAnimals.length < ANIMAL_MAX) {
+        ready[0].reproTimer = ANIMAL_REPRO_INTERVAL;
+        ready[1].reproTimer = ANIMAL_REPRO_INTERVAL;
+        const px = key % gridSize;
+        const py = Math.floor(key / gridSize);
+        const ns = neighbors({ x: px, y: py }, gridSize).filter(
+          n => isPassable(biomes[n.y][n.x]) && !getVillageAt(n, updatedVillages)
+        );
+        if (ns.length === 0) continue;
+        const spot = ns[Math.floor(Math.random() * ns.length)];
+        babyAnimals.push({
+          id: generateId('a'),
+          position: spot,
+          reproTimer: ANIMAL_REPRO_INTERVAL,
+        });
+      }
+    }
+    animals.push(...babyAnimals);
+  }
+
+  // --- Step 6: Grow plants + respawn resources ---
   plants = plants.map(p => {
     if (p.mature) return p;
     const timer = p.growTimer - 1;
