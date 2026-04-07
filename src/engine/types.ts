@@ -85,6 +85,14 @@ export const ANIMAL_COUNT = 20;
 export const PLANT_COUNT = 40;
 export const PLANT_RESPAWN_INTERVAL = 5; // 1 new plant every N ticks
 
+// Biomes
+export type Biome = 'plains' | 'forest' | 'mountain' | 'water';
+
+export interface BiomeGrid {
+  grid: Biome[][];
+  gridSize: number;
+}
+
 export type DeathCause = 'old_age' | 'starvation' | 'fight';
 
 export interface LogEntry {
@@ -96,10 +104,14 @@ export interface LogEntry {
   cause?: DeathCause;
 }
 
+export const FOREST_PLANT_BONUS = 3; // extra plant spawns in forest per interval
+export const FOREST_SPEED_PENALTY = 1; // reduce steps by this in forest
+
 export interface WorldState {
   entities: Entity[];
   animals: Animal[];
   plants: Plant[];
+  biomes: Biome[][];
   tick: number;
   gridSize: number;
   log: LogEntry[];

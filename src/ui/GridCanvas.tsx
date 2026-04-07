@@ -81,15 +81,27 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
 
     const cellSize = size / world.gridSize;
 
-    // Background
-    ctx.fillStyle = GRID_BG;
-    ctx.fillRect(0, 0, size, size);
+    // Background — biome colors
+    const biomeColors: Record<string, string> = {
+      plains: '#2a2a1e',
+      forest: '#1a2e1a',
+      mountain: '#3a3a3a',
+      water: '#1a2a3e',
+    };
+
+    for (let y = 0; y < world.gridSize; y++) {
+      for (let x = 0; x < world.gridSize; x++) {
+        const biome = world.biomes[y][x];
+        ctx.fillStyle = biomeColors[biome] || GRID_BG;
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      }
+    }
 
     // Grid lines
     if (cellSize >= 4) {
       ctx.beginPath();
       ctx.strokeStyle = GRID_LINE;
-      ctx.lineWidth = 0.5;
+      ctx.lineWidth = 0.3;
       for (let i = 0; i <= world.gridSize; i++) {
         const pos = i * cellSize;
         ctx.moveTo(pos, 0);

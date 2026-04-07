@@ -1,4 +1,4 @@
-import type { Entity, Animal, Plant, Position, WorldState, RGB, Traits, LogEntry } from './types';
+import type { Entity, Animal, Plant, Position, WorldState, RGB, Traits, LogEntry, Biome } from './types';
 import {
   MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR,
   BASE_PHEROMONE_RANGE, MATING_DURATION, FIGHTING_DURATION, HUNTING_DURATION, GATHERING_DURATION,
@@ -6,9 +6,11 @@ import {
   ENERGY_MATING_MIN, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   BASE_FOOD_SENSE_RANGE, ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
   PLANT_GROW_TIME, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
-  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX,
+  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS,
 } from './types';
-import { randomStep } from './movement';
+import { generateBiomeGrid, isPassable } from './biomes';
+// randomStep from movement.ts still used by randomStepBiome as fallback concept
+// but we now use randomStepBiome directly
 
 interface CreateWorldOptions {
   gridSize: number;
@@ -147,13 +149,19 @@ function manhattan(a: Position, b: Position): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-function stepToward(from: Position, to: Position): Position {
+function stepToward(from: Position, to: Position, biomes?: Biome[][], gridSize?: number): Position {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return { x: from.x + Math.sign(dx), y: from.y };
-  }
-  return { x: from.x, y: from.y + Math.sign(dy) };
+  // Try primary direction, fallback to secondary if blocked
+  const primary = Math.abs(dx) >= Math.abs(dy)
+    ? { x: from.x + Math.sign(dx), y: from.y }
+    : { x: from.x, y: from.y + Math.sign(dy) };
+  if (!biomes || !gridSize || isValidMove(primary, biomes, gridSize)) return primary;
+  const secondary = Math.abs(dx) >= Math.abs(dy)
+    ? { x: from.x, y: from.y + Math.sign(dy || 1) }
+    : { x: from.x + Math.sign(dx || 1), y: from.y };
+  if (isValidMove(secondary, biomes, gridSize)) return secondary;
+  return from; // completely blocked
 }
 
 function randomPos(gridSize: number): Position {
@@ -163,15 +171,45 @@ function randomPos(gridSize: number): Position {
   };
 }
 
+function randomPassablePos(biomes: Biome[][], gridSize: number): Position {
+  for (let i = 0; i < 100; i++) {
+    const p = randomPos(gridSize);
+    if (isPassable(biomes[p.y][p.x])) return p;
+  }
+  return randomPos(gridSize); // fallback
+}
+
+function isValidMove(pos: Position, biomes: Biome[][], gridSize: number): boolean {
+  return pos.x >= 0 && pos.x < gridSize && pos.y >= 0 && pos.y < gridSize
+    && isPassable(biomes[pos.y][pos.x]);
+}
+
+function randomStepBiome(position: Position, gridSize: number, biomes: Biome[][]): Position {
+  const dirs: Position[] = [
+    { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 },
+  ];
+  // Shuffle directions
+  for (let i = dirs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+  }
+  for (const d of dirs) {
+    const np = { x: position.x + d.x, y: position.y + d.y };
+    if (isValidMove(np, biomes, gridSize)) return np;
+  }
+  return position; // stuck (surrounded by impassable)
+}
+
 export function createWorld(options: CreateWorldOptions): WorldState {
   const { gridSize, entityCount } = options;
+  const biomes = generateBiomeGrid(gridSize);
   const entities: Entity[] = [];
 
   for (let i = 0; i < entityCount; i++) {
     const traits = randomTraits();
     entities.push({
       id: generateId('e'),
-      position: randomPos(gridSize),
+      position: randomPassablePos(biomes, gridSize),
       gender: i < entityCount / 2 ? 'male' : 'female',
       state: 'idle',
       stateTimer: 0,
@@ -188,7 +226,7 @@ export function createWorld(options: CreateWorldOptions): WorldState {
   for (let i = 0; i < ANIMAL_COUNT; i++) {
     animals.push({
       id: generateId('a'),
-      position: randomPos(gridSize),
+      position: randomPassablePos(biomes, gridSize),
       reproTimer: Math.floor(Math.random() * ANIMAL_REPRO_INTERVAL),
     });
   }
@@ -199,13 +237,13 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     const mature = i < PLANT_COUNT / 2;
     plants.push({
       id: generateId('p'),
-      position: randomPos(gridSize),
+      position: randomPassablePos(biomes, gridSize),
       mature,
       growTimer: mature ? 0 : Math.floor(Math.random() * PLANT_GROW_TIME),
     });
   }
 
-  return { entities, animals, plants, tick: 0, gridSize, log: [] };
+  return { entities, animals, plants, biomes, tick: 0, gridSize, log: [] };
 }
 
 // --- Interaction detection (mating/fighting) ---
@@ -274,7 +312,7 @@ function detectInteractions(
 // --- Main tick ---
 
 export function tick(state: WorldState): WorldState {
-  const { gridSize } = state;
+  const { gridSize, biomes } = state;
   const tickNum = state.tick + 1;
   let animals = [...state.animals];
   let plants = [...state.plants];
@@ -462,7 +500,7 @@ export function tick(state: WorldState): WorldState {
   // --- Step 1b: Move animals + tick cooldowns ---
   animals = animals.map(a => ({
     ...a,
-    position: randomStep(a.position, gridSize),
+    position: randomStepBiome(a.position, gridSize, biomes),
     reproTimer: Math.max(0, a.reproTimer - 1),
   }));
 
@@ -542,7 +580,8 @@ export function tick(state: WorldState): WorldState {
     let entity = entities[idx];
     if (entity.state !== 'idle' || babyIds.has(entity.id)) continue;
 
-    const steps = entity.traits.speed;
+    const inForest = biomes[entity.position.y][entity.position.x] === 'forest';
+    const steps = Math.max(1, entity.traits.speed - (inForest ? FOREST_SPEED_PENALTY : 0));
     const senseFood = foodSenseRange(entity);
     const senseMate = pheromoneRange(entity);
 
@@ -560,7 +599,7 @@ export function tick(state: WorldState): WorldState {
             const d = manhattan(entity.position, a.position);
             if (d > 0 && d <= senseFood && d < bestDist) {
               bestDist = d;
-              target = stepToward(entity.position, a.position);
+              target = stepToward(entity.position, a.position, biomes, gridSize);
             }
           }
         } else {
@@ -570,7 +609,7 @@ export function tick(state: WorldState): WorldState {
             const d = manhattan(entity.position, p.position);
             if (d > 0 && d <= senseFood && d < bestDist) {
               bestDist = d;
-              target = stepToward(entity.position, p.position);
+              target = stepToward(entity.position, p.position, biomes, gridSize);
             }
           }
         }
@@ -602,13 +641,13 @@ export function tick(state: WorldState): WorldState {
         }
 
         if (bestPos) {
-          target = stepToward(entity.position, bestPos);
+          target = stepToward(entity.position, bestPos, biomes, gridSize);
         }
       }
 
       // Priority 3: Random step
       if (!target) {
-        target = randomStep(entity.position, gridSize);
+        target = randomStepBiome(entity.position, gridSize, biomes);
       }
 
       if (moveGrid[target.y][target.x] < 2) {
@@ -659,14 +698,31 @@ export function tick(state: WorldState): WorldState {
   });
 
   if (tickNum % PLANT_RESPAWN_INTERVAL === 0) {
+    // Regular spawn on any passable tile
     plants.push({
       id: generateId('p'),
-      position: randomPos(gridSize),
+      position: randomPassablePos(biomes, gridSize),
       mature: false,
       growTimer: PLANT_GROW_TIME,
     });
+    // Bonus spawns in forest
+    for (let b = 0; b < FOREST_PLANT_BONUS; b++) {
+      // Find a random forest tile
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const p = randomPos(gridSize);
+        if (biomes[p.y][p.x] === 'forest') {
+          plants.push({
+            id: generateId('p'),
+            position: p,
+            mature: false,
+            growTimer: PLANT_GROW_TIME,
+          });
+          break;
+        }
+      }
+    }
   }
 
   const fullLog = [...state.log, ...log];
-  return { entities, animals, plants, tick: tickNum, gridSize, log: fullLog };
+  return { entities, animals, plants, biomes, tick: tickNum, gridSize, log: fullLog };
 }

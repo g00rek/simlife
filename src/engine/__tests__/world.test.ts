@@ -1,9 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { createWorld, tick } from '../world';
-import type { WorldState } from '../types';
+import type { WorldState, Biome } from '../types';
 import { TICKS_PER_YEAR } from '../types';
 
-const T = TICKS_PER_YEAR; // shorthand for tests
+const T = TICKS_PER_YEAR;
+
+// All-plains biome grid for tests
+function plainsBiomes(size: number): Biome[][] {
+  return Array.from({ length: size }, () => new Array(size).fill('plains'));
+}
 
 describe('createWorld', () => {
   it('creates world with correct grid size', () => {
@@ -107,7 +112,7 @@ describe('aging and death', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', stateTimer: 0, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
       ],
@@ -121,7 +126,7 @@ describe('aging and death', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'dying', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', stateTimer: 0, age: 100 * T - 1, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
       ],
@@ -136,7 +141,7 @@ describe('aging and death', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', stateTimer: 0, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
       ],
@@ -154,7 +159,7 @@ describe('aging and death', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -174,7 +179,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 10 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 10 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -191,7 +196,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 55 * T, maxAge: 80 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 55 * T, maxAge: 80 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -208,7 +213,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 3 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -226,7 +231,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -243,7 +248,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 10, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [0, 0, 255] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 10, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -258,7 +263,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'fighting', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'male', state: 'fighting', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 0, 255] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -274,7 +279,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -300,7 +305,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -314,7 +319,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -332,7 +337,7 @@ describe('mating', () => {
       const world: WorldState = {
         gridSize: 30,
         tick: 0,
-        animals: [], plants: [], log: [],
+        animals: [], plants: [], log: [], biomes: plainsBiomes(30),
         entities: [
           { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
           { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -350,7 +355,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -371,7 +376,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'e1', position: { x: 5, y: 5 }, gender: 'male', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'e2', position: { x: 5, y: 5 }, gender: 'female', state: 'mating', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
@@ -390,7 +395,7 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 10,
       tick: 0,
-      animals: [], plants: [], log: [],
+      animals: [], plants: [], log: [], biomes: plainsBiomes(30),
       entities: [
         { id: 'blocker1', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
         { id: 'blocker2', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0 },
