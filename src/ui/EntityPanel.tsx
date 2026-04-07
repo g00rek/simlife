@@ -81,6 +81,10 @@ export function EntityPanel({ entity, onClose }: EntityPanelProps) {
         <Bar value={entity.traits.twinChance} max={0.5} color="#73daca" />
       </div>
       <div style={rowStyle}>
+        <span style={dimStyle}>Tribe:</span>
+        <span>{['Red', 'Green', 'Blue'][entity.tribe] ?? 'Ronin'}</span>
+      </div>
+      <div style={rowStyle}>
         <span style={dimStyle}>Position:</span>
         <span>{entity.position.x},{entity.position.y}</span>
       </div>

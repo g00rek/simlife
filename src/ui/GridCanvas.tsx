@@ -112,6 +112,35 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
       ctx.stroke();
     }
 
+    // --- Draw village borders (palisade) ---
+    for (const village of world.villages) {
+      const [r, g, b] = village.color;
+      ctx.strokeStyle = `rgba(${r},${g},${b},0.5)`;
+      ctx.lineWidth = 2;
+      // Draw border around village area
+      for (let y = 0; y < world.gridSize; y++) {
+        for (let x = 0; x < world.gridSize; x++) {
+          const inside = Math.abs(x - village.center.x) + Math.abs(y - village.center.y) <= village.radius;
+          if (!inside) continue;
+          const px = x * cellSize;
+          const py = y * cellSize;
+          // Check each edge — draw border if neighbor is outside
+          if (Math.abs((x - 1) - village.center.x) + Math.abs(y - village.center.y) > village.radius) {
+            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py + cellSize); ctx.stroke();
+          }
+          if (Math.abs((x + 1) - village.center.x) + Math.abs(y - village.center.y) > village.radius) {
+            ctx.beginPath(); ctx.moveTo(px + cellSize, py); ctx.lineTo(px + cellSize, py + cellSize); ctx.stroke();
+          }
+          if (Math.abs(x - village.center.x) + Math.abs((y - 1) - village.center.y) > village.radius) {
+            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + cellSize, py); ctx.stroke();
+          }
+          if (Math.abs(x - village.center.x) + Math.abs((y + 1) - village.center.y) > village.radius) {
+            ctx.beginPath(); ctx.moveTo(px, py + cellSize); ctx.lineTo(px + cellSize, py + cellSize); ctx.stroke();
+          }
+        }
+      }
+    }
+
     // --- Draw plants (green = growing, red = ready) ---
     for (const plant of world.plants) {
       const cx = plant.position.x * cellSize + cellSize / 2;

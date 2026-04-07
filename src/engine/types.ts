@@ -18,6 +18,16 @@ export interface Traits {
   twinChance: number;   // 0-1: chance of multiple births (0=always single, 1=always multiples)
 }
 
+export type TribeId = 0 | 1 | 2;
+
+export interface Village {
+  tribe: TribeId;
+  center: Position;
+  radius: number; // Manhattan radius of village area
+  color: RGB;
+  name: string;
+}
+
 export interface Entity {
   id: string;
   position: Position;
@@ -29,8 +39,9 @@ export interface Entity {
   color: RGB;
   energy: number;
   traits: Traits;
-  meat: number; // meat portions carried (males only, from hunting)
-  partnerTraits?: Traits; // stored father's traits during pregnancy
+  meat: number;
+  tribe: TribeId;
+  partnerTraits?: Traits;
   partnerColor?: RGB;
 }
 
@@ -111,11 +122,14 @@ export interface LogEntry {
 export const FOREST_PLANT_BONUS = 3; // extra plant spawns in forest per interval
 export const FOREST_SPEED_PENALTY = 1; // reduce steps by this in forest
 
+export const VILLAGE_RADIUS = 5;
+
 export interface WorldState {
   entities: Entity[];
   animals: Animal[];
   plants: Plant[];
   biomes: Biome[][];
+  villages: Village[];
   tick: number;
   gridSize: number;
   log: LogEntry[];
