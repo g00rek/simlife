@@ -93,11 +93,11 @@ export const GATHERING_DURATION = 2;
 // Energy
 export const ENERGY_MAX = 100;
 export const ENERGY_START = 80;
-export const ENERGY_DRAIN_INTERVAL = 2; // lose 1 energy every N ticks
+export const ENERGY_DRAIN_INTERVAL = 3; // lose 1 energy every N ticks
 export const ENERGY_MEAT = 50;
 export const ENERGY_PLANT = 35;
 export const ENERGY_MATING_MIN = 50;
-export const HUNGER_THRESHOLD = 60; // start seeking food earlier
+export const HUNGER_THRESHOLD = 40; // eat from pantry when truly hungry
 export const CHILD_AGE = 10; // children don't lose energy (years)
 
 // Resources
