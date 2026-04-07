@@ -282,7 +282,9 @@ export function tick(state: WorldState): WorldState {
   const aged: Entity[] = state.entities.map(e => {
     const a = { ...e, age: e.age + 1 };
     if (!isChild(a) && a.age % ENERGY_DRAIN_INTERVAL === 0) {
-      const drain = 1 + traitEnergyDrain(a.traits);
+      const baseDrain = 1 + traitEnergyDrain(a.traits);
+      // Hungry entities move less → half energy drain
+      const drain = isHungry(a) ? baseDrain * 0.5 : baseDrain;
       a.energy = Math.max(0, a.energy - drain);
     }
     // Males eat a meat portion when hungry
