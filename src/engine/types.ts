@@ -102,8 +102,8 @@ export const CHILD_AGE = 10; // children don't lose energy (years)
 // Resources
 export const BASE_FOOD_SENSE_RANGE = 3; // added to perception for food sensing
 export const ANIMAL_COUNT = 30;
-export const PLANT_COUNT = 60;
-export const PLANT_RESPAWN_INTERVAL = 3; // 1 new plant every N ticks
+export const PLANT_COUNT = 30;
+export const PLANT_RESPAWN_INTERVAL = 5; // 1 new plant every N ticks
 
 // Biomes
 export type Biome = 'plains' | 'forest' | 'mountain' | 'water';
@@ -124,7 +124,7 @@ export interface LogEntry {
   cause?: DeathCause;
 }
 
-export const FOREST_PLANT_BONUS = 3; // extra plant spawns in forest per interval
+export const FOREST_PLANT_BONUS = 1; // extra plant spawns in forest per interval
 export const FOREST_SPEED_PENALTY = 1; // reduce steps by this in forest
 
 export const VILLAGE_RADIUS = 5;

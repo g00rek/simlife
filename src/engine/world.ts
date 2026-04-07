@@ -908,7 +908,7 @@ export function tick(state: WorldState): WorldState {
     return { ...p, growTimer: timer };
   });
 
-  const MAX_PLANTS = 150;
+  const MAX_PLANTS = 80;
   if (tickNum % PLANT_RESPAWN_INTERVAL === 0 && plants.length < MAX_PLANTS) {
     // Spawn on passable tile NOT inside a village
     for (let attempt = 0; attempt < 20; attempt++) {
