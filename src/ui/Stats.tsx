@@ -23,15 +23,36 @@ export function Stats({ world }: StatsProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={panelStyle}>
-        <div style={labelStyle}>Population</div>
-        <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
-          {world.entities.length}
-        </div>
-        <div style={{ fontSize: '12px', marginTop: '4px' }}>
-          <span style={{ color: '#7aa2f7' }}>&#9794; {males}</span>
-          {'  '}
-          <span style={{ color: '#f7768e' }}>&#9792; {females}</span>
-        </div>
+        <div style={labelStyle}>Population — {world.entities.length}</div>
+        {world.villages.map(v => {
+          const members = world.entities.filter(e => e.tribe === v.tribe);
+          const m = members.filter(e => e.gender === 'male').length;
+          const f = members.filter(e => e.gender === 'female').length;
+          return (
+            <div key={v.tribe} style={{ fontSize: '11px', marginBottom: '2px' }}>
+              <span style={{ color: `rgb(${v.color.join(',')})` }}>{v.name}</span>
+              {' '}
+              <span style={{ color: '#7aa2f7' }}>&#9794;{m}</span>
+              {' '}
+              <span style={{ color: '#f7768e' }}>&#9792;{f}</span>
+            </div>
+          );
+        })}
+        {(() => {
+          const ronins = world.entities.filter(e => e.tribe === -1);
+          if (ronins.length === 0) return null;
+          const m = ronins.filter(e => e.gender === 'male').length;
+          const f = ronins.filter(e => e.gender === 'female').length;
+          return (
+            <div style={{ fontSize: '11px', marginBottom: '2px' }}>
+              <span style={{ color: '#b48c3c' }}>Ronin</span>
+              {' '}
+              <span style={{ color: '#7aa2f7' }}>&#9794;{m}</span>
+              {' '}
+              <span style={{ color: '#f7768e' }}>&#9792;{f}</span>
+            </div>
+          );
+        })()}
         <div style={{ fontSize: '11px', color: '#bb9af7', marginTop: '4px', visibility: mating > 0 ? 'visible' : 'hidden' }}>
           &#10084; {Math.floor(mating / 2)} pairs
         </div>
