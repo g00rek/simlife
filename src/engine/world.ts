@@ -311,11 +311,16 @@ export function createWorld(options: CreateWorldOptions): WorldState {
 
   const plants: Plant[] = [];
   for (let i = 0; i < PLANT_COUNT; i++) {
-    // Half start mature, half growing
     const mature = i < PLANT_COUNT / 2;
+    // Spawn outside villages
+    let pos: Position;
+    for (let attempt = 0; ; attempt++) {
+      pos = randomPassablePos(biomes, gridSize);
+      if (!getVillageAt(pos, villages) || attempt > 30) break;
+    }
     plants.push({
       id: generateId('p'),
-      position: randomPassablePos(biomes, gridSize),
+      position: pos,
       mature,
       growTimer: mature ? 0 : Math.floor(Math.random() * PLANT_GROW_TIME),
     });
@@ -663,10 +668,13 @@ export function tick(state: WorldState): WorldState {
       const flee = Math.abs(dx) >= Math.abs(dy)
         ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
         : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
-      newPos = isValidMove(flee, biomes, gridSize) ? flee : randomStepBiome(a.position, gridSize, biomes);
+      newPos = (isValidMove(flee, biomes, gridSize) && !getVillageAt(flee, updatedVillages))
+        ? flee : randomStepBiome(a.position, gridSize, biomes);
     } else {
       newPos = randomStepBiome(a.position, gridSize, biomes);
     }
+    // Don't enter villages
+    if (getVillageAt(newPos, updatedVillages)) newPos = a.position;
     return { ...a, position: newPos, reproTimer: Math.max(0, a.reproTimer - 1) };
   });
 
@@ -756,9 +764,16 @@ export function tick(state: WorldState): WorldState {
       if (entity.state !== 'idle') break;
 
       let target: Position | null = null;
+      const myVillage = getVillage(entity.tribe);
+      const inOwnVillage = myVillage && isInVillage(entity.position, myVillage);
 
-      // Priority 1: Hungry → seek food
-      if (isHungry(entity) && !isChild(entity)) {
+      // Priority 0: Return to village if outside and not hungry (or child)
+      if (myVillage && !inOwnVillage && (!isHungry(entity) || isChild(entity))) {
+        target = stepToward(entity.position, myVillage.center, biomes, gridSize, entity.tribe, updatedVillages);
+      }
+
+      // Priority 1: Hungry + outside village → seek food
+      if (!target && isHungry(entity) && !isChild(entity) && !inOwnVillage) {
         if (entity.gender === 'male') {
           let bestDist = senseFood + 1;
           for (const a of animals) {
@@ -778,6 +793,20 @@ export function tick(state: WorldState): WorldState {
               target = stepToward(entity.position, p.position, biomes, gridSize, entity.tribe, villages);
             }
           }
+        }
+      }
+
+      // Priority 1b: In village but hungry and pantry empty → go outside to forage
+      if (!target && isHungry(entity) && !isChild(entity) && inOwnVillage && myVillage) {
+        const pantryEmpty = myVillage.meatStore <= 0 && myVillage.plantStore <= 0;
+        if (pantryEmpty) {
+          // Walk toward edge of village (away from center)
+          const dx = entity.position.x - myVillage.center.x;
+          const dy = entity.position.y - myVillage.center.y;
+          const awayX = entity.position.x + Math.sign(dx || (Math.random() < 0.5 ? 1 : -1));
+          const awayY = entity.position.y + Math.sign(dy || (Math.random() < 0.5 ? 1 : -1));
+          const away = { x: awayX, y: awayY };
+          if (isValidMove(away, biomes, gridSize)) target = away;
         }
       }
 
@@ -870,20 +899,21 @@ export function tick(state: WorldState): WorldState {
     return { ...p, growTimer: timer };
   });
 
-  if (tickNum % PLANT_RESPAWN_INTERVAL === 0) {
-    // Regular spawn on any passable tile
-    plants.push({
-      id: generateId('p'),
-      position: randomPassablePos(biomes, gridSize),
-      mature: false,
-      growTimer: PLANT_GROW_TIME,
-    });
-    // Bonus spawns in forest
-    for (let b = 0; b < FOREST_PLANT_BONUS; b++) {
-      // Find a random forest tile
+  const MAX_PLANTS = 150;
+  if (tickNum % PLANT_RESPAWN_INTERVAL === 0 && plants.length < MAX_PLANTS) {
+    // Spawn on passable tile NOT inside a village
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const pos = randomPassablePos(biomes, gridSize);
+      if (!getVillageAt(pos, updatedVillages)) {
+        plants.push({ id: generateId('p'), position: pos, mature: false, growTimer: PLANT_GROW_TIME });
+        break;
+      }
+    }
+    // Bonus spawns in forest (not in villages)
+    for (let b = 0; b < FOREST_PLANT_BONUS && plants.length < MAX_PLANTS; b++) {
       for (let attempt = 0; attempt < 20; attempt++) {
         const p = randomPos(gridSize);
-        if (biomes[p.y][p.x] === 'forest') {
+        if (biomes[p.y][p.x] === 'forest' && !getVillageAt(p, updatedVillages)) {
           plants.push({
             id: generateId('p'),
             position: p,
