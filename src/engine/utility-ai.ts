@@ -207,7 +207,7 @@ export function buildAIContext(
   // Find nearest mature plant
   let nearestPlant: AIContext['nearestPlant'];
   for (const p of plants) {
-    if (!p.mature) continue;
+    if (p.portions <= 0) continue;
     const d = Math.abs(p.position.x - entity.position.x) + Math.abs(p.position.y - entity.position.y);
     if (d > 0 && d <= sense && (!nearestPlant || d < nearestPlant.dist)) {
       nearestPlant = { pos: p.position, dist: d };

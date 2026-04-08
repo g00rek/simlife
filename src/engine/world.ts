@@ -5,7 +5,7 @@ import {
   ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
   HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
-  PLANT_GROW_TIME, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
+  PLANT_PORTIONS, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
   CHOPPING_DURATION, BUILDING_DURATION,
   ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, HUNT_KILL_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS,
 } from './types';
@@ -351,8 +351,8 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     plants.push({
       id: generateId('p'),
       position: pos,
-      mature,
-      growTimer: mature ? 0 : Math.floor(Math.random() * PLANT_GROW_TIME),
+      portions: mature ? PLANT_PORTIONS : 0,
+      maxPortions: PLANT_PORTIONS,
     });
   }
 
@@ -783,13 +783,13 @@ export function tick(state: WorldState): WorldState {
       }
     }
 
-    // Females gather mature plants on same tile — instant pick
+    // Females gather from plants with portions
     if (e.gender === 'female') {
       const plantIdx = plants.findIndex(p =>
-        p.mature && p.position.x === e.position.x && p.position.y === e.position.y
+        p.portions > 0 && p.position.x === e.position.x && p.position.y === e.position.y
       );
       if (plantIdx >= 0) {
-        plants.splice(plantIdx, 1);
+        plants[plantIdx] = { ...plants[plantIdx], portions: plants[plantIdx].portions - 1 };
         const myV = getVillage(e.tribe);
         if (myV) {
           myV.plantStore += 1;
@@ -909,9 +909,9 @@ export function tick(state: WorldState): WorldState {
             else { entity = { ...entity, meat: entity.meat + MEAT_PORTIONS_PER_HUNT }; entities[idx] = entity; }
           }
         } else if (entity.gender === 'female') {
-          const pi = plants.findIndex(p => p.mature && p.position.x === entity.position.x && p.position.y === entity.position.y);
+          const pi = plants.findIndex(p => p.portions > 0 && p.position.x === entity.position.x && p.position.y === entity.position.y);
           if (pi >= 0) {
-            plants.splice(pi, 1);
+            plants[pi] = { ...plants[pi], portions: plants[pi].portions - 1 };
             if (stepV) stepV.plantStore += 1;
             else { entity = { ...entity, energy: Math.min(ENERGY_MAX, entity.energy + ENERGY_PLANT) }; entities[idx] = entity; }
           }
@@ -944,10 +944,10 @@ export function tick(state: WorldState): WorldState {
 
     if (e.gender === 'female') {
       const plantIdx = plants.findIndex(p =>
-        p.mature && p.position.x === e.position.x && p.position.y === e.position.y
+        p.portions > 0 && p.position.x === e.position.x && p.position.y === e.position.y
       );
       if (plantIdx >= 0) {
-        plants.splice(plantIdx, 1);
+        plants[plantIdx] = { ...plants[plantIdx], portions: plants[plantIdx].portions - 1 };
         const myV = getVillage(e.tribe);
         if (myV) myV.plantStore += 1;
         else entities[i] = { ...e, energy: Math.min(ENERGY_MAX, e.energy + ENERGY_PLANT) };
@@ -1033,35 +1033,32 @@ export function tick(state: WorldState): WorldState {
     animals.push(...babyAnimals);
   }
 
-  // --- Step 6: Grow plants + respawn resources ---
-  plants = plants.map(p => {
-    if (p.mature) return p;
-    const timer = p.growTimer - 1;
-    if (timer <= 0) return { ...p, mature: true, growTimer: 0 };
-    return { ...p, growTimer: timer };
-  });
+  // --- Step 6: Seasonal plant regrow + respawn ---
+  // Summer = season 1 (months 3-5). First tick of summer = regrow all plants
+  const ticksPerMonth = TICKS_PER_DAY * 10;
+  const month = Math.floor((tickNum % TICKS_PER_YEAR) / ticksPerMonth);
+  const isSummerStart = month === 3 && (tickNum % ticksPerMonth) === 0;
 
+  if (isSummerStart) {
+    // All plants regrow their portions at start of summer
+    plants = plants.map(p => ({ ...p, portions: p.maxPortions }));
+  }
+
+  // Slow new plant spawns
   const MAX_PLANTS = 80;
   if (tickNum % PLANT_RESPAWN_INTERVAL === 0 && plants.length < MAX_PLANTS) {
-    // Spawn on passable tile NOT inside a village
     for (let attempt = 0; attempt < 20; attempt++) {
       const pos = randomPassablePos(biomes, gridSize);
       if (!getVillageAt(pos, updatedVillages)) {
-        plants.push({ id: generateId('p'), position: pos, mature: false, growTimer: PLANT_GROW_TIME });
+        plants.push({ id: generateId('p'), position: pos, portions: PLANT_PORTIONS, maxPortions: PLANT_PORTIONS });
         break;
       }
     }
-    // Bonus spawns in forest (not in villages)
     for (let b = 0; b < FOREST_PLANT_BONUS && plants.length < MAX_PLANTS; b++) {
       for (let attempt = 0; attempt < 20; attempt++) {
         const p = randomPos(gridSize);
         if (biomes[p.y][p.x] === 'forest' && !getVillageAt(p, updatedVillages)) {
-          plants.push({
-            id: generateId('p'),
-            position: p,
-            mature: false,
-            growTimer: PLANT_GROW_TIME,
-          });
+          plants.push({ id: generateId('p'), position: p, portions: PLANT_PORTIONS, maxPortions: PLANT_PORTIONS });
           break;
         }
       }

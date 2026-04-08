@@ -172,12 +172,13 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
       ctx.fill();
     }
 
-    // --- Draw plants (green = growing, red = ready) ---
+    // --- Draw plants (red = has fruit, green = depleted) ---
     for (const plant of world.plants) {
       const cx = plant.position.x * cellSize + cellSize / 2;
       const cy = plant.position.y * cellSize + cellSize / 2;
-      const r = plant.mature ? cellSize * 0.18 : cellSize * 0.12;
-      ctx.fillStyle = plant.mature ? '#e53935' : '#4caf50';
+      const hasFruit = plant.portions > 0;
+      const r = hasFruit ? cellSize * 0.18 : cellSize * 0.12;
+      ctx.fillStyle = hasFruit ? '#e53935' : '#4caf50';
       ctx.beginPath();
       ctx.arc(cx, cy + cellSize * 0.3, r, 0, Math.PI * 2);
       ctx.fill();
@@ -327,7 +328,7 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
         let bestD = sense + 1;
         let tx = -1, ty = -1;
         for (const p of world.plants) {
-          if (!p.mature) continue;
+          if (p.portions <= 0) continue;
           const d = Math.abs(p.position.x - entity.position.x) + Math.abs(p.position.y - entity.position.y);
           if (d > 0 && d <= sense && d < bestD) {
             bestD = d;

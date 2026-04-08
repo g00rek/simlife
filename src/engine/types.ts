@@ -74,11 +74,13 @@ export const HUNT_KILL_RANGE = 2;       // bow range — instant kill within thi
 export interface Plant {
   id: string;
   position: Position;
-  mature: boolean; // green = growing, red = ready to harvest
-  growTimer: number; // ticks until mature
+  portions: number;  // harvestable portions (0 = depleted)
+  maxPortions: number;
 }
 
-export const PLANT_GROW_TIME = 1200; // ~2 months to mature
+export const PLANT_PORTIONS = 5;          // portions per bush
+export const PLANT_SEASON_REGROW = true;  // regrow in summer
+
 export const FOREST_REGROW_TIME = 7200; // ~3 years for chopped forest to regrow
 export const FIGHT_MIN_AGE = 16;
 export const CHOPPING_DURATION = 5;  // half day
