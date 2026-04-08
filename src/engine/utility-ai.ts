@@ -188,7 +188,7 @@ export function buildAIContext(
     Math.abs(entity.position.x - village.center.x) + Math.abs(entity.position.y - village.center.y) <= village.radius
   );
 
-  const sense = 3 + entity.traits.perception * 2;
+  const sense = Math.floor(3 + entity.traits.perception * 2);
 
   // Find nearest animal
   let nearestAnimal: AIContext['nearestAnimal'];
@@ -211,7 +211,7 @@ export function buildAIContext(
 
   // Find nearest forest tile
   let nearestForest: AIContext['nearestForest'];
-  const forestRange = sense * 2;
+  const forestRange = Math.floor(sense * 2);
   for (let dy = -forestRange; dy <= forestRange; dy++) {
     for (let dx = -forestRange; dx <= forestRange; dx++) {
       const nx = entity.position.x + dx;
