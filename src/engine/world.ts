@@ -14,6 +14,7 @@ import { generateBiomeGrid, isPassable, isPassableForRonin } from './biomes';
 interface CreateWorldOptions {
   gridSize: number;
   entityCount: number;
+  villageCount?: number; // 1-3, default 3
 }
 
 let nextId = 0;
@@ -249,17 +250,21 @@ function randomStepBiome(position: Position, gridSize: number, biomes: Biome[][]
 }
 
 export function createWorld(options: CreateWorldOptions): WorldState {
-  const { gridSize, entityCount } = options;
+  const { gridSize, entityCount, villageCount = 3 } = options;
+  const numVillages = Math.min(3, Math.max(1, villageCount));
   const biomes = generateBiomeGrid(gridSize);
 
-  // Create 3 villages in different quadrants
-  const tribeColors: RGB[] = [[220, 60, 60], [60, 180, 60], [60, 100, 220]];
-  const tribeNames = ['Red Tribe', 'Green Tribe', 'Blue Tribe'];
-  const villageCenters: Position[] = [
+  // Village definitions (up to 3)
+  const allTribeColors: RGB[] = [[220, 60, 60], [60, 180, 60], [60, 100, 220]];
+  const allTribeNames = ['Red Tribe', 'Green Tribe', 'Blue Tribe'];
+  const allCenters: Position[] = [
     { x: Math.floor(gridSize * 0.2), y: Math.floor(gridSize * 0.2) },
     { x: Math.floor(gridSize * 0.8), y: Math.floor(gridSize * 0.2) },
     { x: Math.floor(gridSize * 0.5), y: Math.floor(gridSize * 0.8) },
   ];
+  const tribeColors = allTribeColors.slice(0, numVillages);
+  const tribeNames = allTribeNames.slice(0, numVillages);
+  const villageCenters = allCenters.slice(0, numVillages);
 
   // Ensure village centers are on passable terrain
   for (const vc of villageCenters) {
@@ -292,9 +297,9 @@ export function createWorld(options: CreateWorldOptions): WorldState {
   }));
 
   const entities: Entity[] = [];
-  const perTribe = Math.floor(entityCount / 3);
+  const perTribe = Math.floor(entityCount / numVillages);
 
-  for (let t = 0; t < 3; t++) {
+  for (let t = 0; t < numVillages; t++) {
     const tribe = t as TribeId;
     const vc = villageCenters[t];
     for (let i = 0; i < perTribe; i++) {
