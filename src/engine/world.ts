@@ -111,13 +111,6 @@ function fightWinner(a: Entity, b: Entity): Entity {
 }
 
 // Color derived from traits: R=strength, G=perception, B=speed
-function traitsToColor(t: Traits): RGB {
-  return [
-    clamp(Math.round((t.strength / 10) * 255), 30, 255),
-    clamp(Math.round((t.perception / 5) * 255), 30, 255),
-    clamp(Math.round((t.speed / 3) * 255), 30, 255),
-  ];
-}
 
 function createOccupancyGrid(gridSize: number, entities: Entity[]): number[][] {
   const grid: number[][] = Array.from({ length: gridSize }, () =>
@@ -317,7 +310,11 @@ export function createWorld(options: CreateWorldOptions): WorldState {
         stateTimer: 0,
         age: (MIN_REPRODUCTIVE_AGE + Math.floor(Math.random() * 10)) * TICKS_PER_YEAR, // 18-27 years
         maxAge: randomMaxAge(traits.fertility),
-        color: traitsToColor(traits),
+        color: [
+          50 + Math.floor(Math.random() * 206),
+          50 + Math.floor(Math.random() * 206),
+          50 + Math.floor(Math.random() * 206),
+        ] as RGB,
         energy: ENERGY_START,
         traits,
         meat: 0,
@@ -446,8 +443,14 @@ function detectPairing(entities: Entity[], villages: Village[]): Entity[] {
       const mi = updated.findIndex(e => e.id === male.id);
       const fi = updated.findIndex(e => e.id === female.id);
       if (mi >= 0 && fi >= 0) {
-        updated[mi] = { ...updated[mi], partnerId: female.id };
-        updated[fi] = { ...updated[fi], partnerId: male.id };
+        // Family color = mix of both
+        const familyColor: RGB = [
+          Math.round((male.color[0] + female.color[0]) / 2),
+          Math.round((male.color[1] + female.color[1]) / 2),
+          Math.round((male.color[2] + female.color[2]) / 2),
+        ];
+        updated[mi] = { ...updated[mi], partnerId: female.id, color: familyColor };
+        updated[fi] = { ...updated[fi], partnerId: male.id, color: familyColor };
       }
     }
   }
@@ -584,7 +587,7 @@ export function tick(state: WorldState): WorldState {
             stateTimer: 0,
             age: 0,
             maxAge: randomMaxAge(babyTraits.fertility),
-            color: traitsToColor(babyTraits),
+            color: [...mother.color] as RGB, // born with family color
             energy: ENERGY_START,
             traits: babyTraits,
             meat: 0,

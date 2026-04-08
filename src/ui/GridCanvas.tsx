@@ -13,18 +13,9 @@ interface GridCanvasProps {
   onClick: (gridX: number, gridY: number) => void;
 }
 
-const TRIBE_COLORS: Record<number, [number, number, number]> = {
-  0: [220, 60, 60],   // Red tribe
-  1: [60, 180, 60],   // Green tribe
-  2: [60, 100, 220],  // Blue tribe
-  [-1]: [180, 140, 60], // Ronin (gold/brown)
-};
-
-function entityColor(entity: Entity, villages: { tribe: number; color: [number, number, number] }[]): string {
-  const base = TRIBE_COLORS[entity.tribe]
-    ?? villages.find(v => v.tribe === entity.tribe)?.color
-    ?? [150, 150, 150];
-  return `rgb(${base[0]},${base[1]},${base[2]})`;
+function entityColor(entity: Entity): string {
+  const [r, g, b] = entity.color;
+  return `rgb(${r},${g},${b})`;
 }
 
 function drawPerson(
@@ -248,7 +239,7 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
 
         draws.push({
           cx, cy,
-          color: entityColor(entity, world.villages as any),
+          color: entityColor(entity),
           gender: entity.gender,
           age: ageInYears(entity),
           state: entity.state,
