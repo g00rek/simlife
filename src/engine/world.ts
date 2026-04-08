@@ -807,11 +807,13 @@ export function tick(state: WorldState): WorldState {
       continue;
     }
 
-    // Male carrying wood, in own village, on empty tile → build
+    // Male carrying wood, in own village, on empty tile (no house, no one building) → build
     const eVillage = e.tribe >= 0 ? updatedVillages.find(v => v.tribe === e.tribe) : undefined;
+    const tileOccupied = houses.some(h => h.position.x === e.position.x && h.position.y === e.position.y)
+      || entities.some(o => o.id !== e.id && o.state === 'building' && o.position.x === e.position.x && o.position.y === e.position.y);
     if (e.gender === 'male' && e.carryingWood && eVillage
         && isInVillage(e.position, eVillage)
-        && !houses.some(h => h.position.x === e.position.x && h.position.y === e.position.y)) {
+        && !tileOccupied) {
       entities[i] = { ...e, state: 'building', stateTimer: BUILDING_DURATION };
       continue;
     }
@@ -960,11 +962,13 @@ export function tick(state: WorldState): WorldState {
       continue;
     }
 
-    // Building: male with wood, in own village, on empty tile
+    // Building: male with wood, in own village, on empty tile (no house, no one building)
     const postBuildV = e.tribe >= 0 ? updatedVillages.find(v => v.tribe === e.tribe) : undefined;
+    const postTileOccupied = houses.some(h => h.position.x === e.position.x && h.position.y === e.position.y)
+      || entities.some(o => o.id !== e.id && o.state === 'building' && o.position.x === e.position.x && o.position.y === e.position.y);
     if (e.gender === 'male' && e.carryingWood && postBuildV
         && isInVillage(e.position, postBuildV)
-        && !houses.some(h => h.position.x === e.position.x && h.position.y === e.position.y)) {
+        && !postTileOccupied) {
       entities[i] = { ...e, state: 'building', stateTimer: BUILDING_DURATION };
       continue;
     }
