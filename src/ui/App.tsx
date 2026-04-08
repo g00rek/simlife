@@ -169,6 +169,13 @@ export function App() {
                       </div>
                       <span style={{ fontSize: '9px', color: '#666', width: '20px' }}>{v.plantStore}</span>
                     </div>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '2px' }}>
+                      <span style={{ fontSize: '9px', color: '#a08050', width: '12px' }}>&#129717;</span>
+                      <div style={{ flex: 1, height: '6px', background: '#333', borderRadius: '3px' }}>
+                        <div style={{ width: `${Math.min(100, Math.round(((v as any).woodStore / 30) * 100))}%`, height: '100%', background: '#a08050', borderRadius: '3px' }} />
+                      </div>
+                      <span style={{ fontSize: '9px', color: '#666', width: '20px' }}>{(v as any).woodStore}</span>
+                    </div>
                   </div>
                 );
               })}

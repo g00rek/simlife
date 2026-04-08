@@ -34,7 +34,7 @@ for (let t = 0; t < TICKS; t++) {
       const action = decideAction(ctx);
       const topScore = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
       console.log(
-        `  ${e.id} ${e.gender === 'male' ? '♂' : '♀'} age=${ageInYears(e)} pos=(${e.position.x},${e.position.y}) state=${e.state}${e.stateTimer > 0 ? `(${e.stateTimer})` : ''} energy=${Math.round(e.energy)} home=${e.homeId ?? '-'} wood=${e.carryingWood ? 'Y' : 'N'} → ${action.type} [${topScore?.[0]}=${topScore?.[1].toFixed(2)}]`
+        `  ${e.id} ${e.gender === 'male' ? '♂' : '♀'} age=${ageInYears(e)} pos=(${e.position.x},${e.position.y}) state=${e.state}${e.stateTimer > 0 ? `(${e.stateTimer})` : ''} energy=${Math.round(e.energy)} home=${e.homeId ?? '-'} → ${action.type} [${topScore?.[0]}=${topScore?.[1].toFixed(2)}]`
       );
     }
     console.log('');

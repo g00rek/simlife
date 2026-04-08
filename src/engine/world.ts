@@ -8,6 +8,7 @@ import {
   PLANT_PORTIONS, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
   CHOPPING_DURATION, BUILDING_DURATION,
   ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, HUNT_KILL_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS,
+  WOOD_PER_CHOP, HOUSE_WOOD_COST, WINTER_WOOD_COST, WINTER_COLD_DAMAGE,
 } from './types';
 import { generateBiomeGrid, isPassable, isPassableForRonin } from './biomes';
 import { decideAction, buildAIContext } from './utility-ai';
@@ -274,8 +275,9 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     radius: VILLAGE_RADIUS,
     color: tribeColors[i],
     name: tribeNames[i],
-    meatStore: 5, // modest start for Adam & Eve
+    meatStore: 5,
     plantStore: 10,
+    woodStore: 10, // some firewood to start
   }));
 
   const entities: Entity[] = [];
@@ -319,7 +321,6 @@ export function createWorld(options: CreateWorldOptions): WorldState {
         traits,
         meat: 0,
         tribe,
-        carryingWood: false,
         birthCooldown: 0,
       });
     }
@@ -401,7 +402,7 @@ function detectInteractions(
     // Same-tribe training — only when truly idle (has house, has partner, pantry full, not carrying wood)
     if (!fightStarted) {
       const trulyIdle = fightableMales.filter(e => {
-        if (newActionIds.has(e.id) || e.tribe < 0 || !e.homeId || !e.partnerId || e.carryingWood) return false;
+        if (newActionIds.has(e.id) || e.tribe < 0 || !e.homeId || !e.partnerId) return false;
         // Must be inside own village
         const v = e.tribe >= 0 ? villages.find(vl => vl.tribe === e.tribe) : undefined;
         return v && Math.abs(e.position.x - v.center.x) + Math.abs(e.position.y - v.center.y) <= v.radius;
@@ -597,7 +598,6 @@ export function tick(state: WorldState): WorldState {
             energy: ENERGY_START,
             traits: babyTraits,
             meat: 0,
-            carryingWood: false,
             birthCooldown: 0,
             tribe: (mother.partnerTribe === mother.tribe ? mother.tribe : -1) as TribeId,
             homeId: mother.homeId,
@@ -636,18 +636,20 @@ export function tick(state: WorldState): WorldState {
         resolvedIds.add(loserId);
       }
     } else if (action === 'chopping') {
-      // Done chopping tree → now carrying wood
       for (const chopper of finishing) {
         resolvedIds.add(chopper.id);
-        // Forest tile becomes plains (stump), will regrow
         if (biomes[chopper.position.y][chopper.position.x] === 'forest') {
           biomes[chopper.position.y][chopper.position.x] = 'plains';
         }
+        // All wood goes to warehouse
+        const chopV = getVillage(chopper.tribe);
+        if (chopV) chopV.woodStore += WOOD_PER_CHOP;
       }
     } else if (action === 'building') {
-      // Done building → create house
+      // Done building → create house (wood already reserved at start)
       for (const builder of finishing) {
         resolvedIds.add(builder.id);
+        // Wood was deducted when building started
         const newHouse: House = {
           id: generateId('h'),
           position: { ...builder.position },
@@ -694,10 +696,10 @@ export function tick(state: WorldState): WorldState {
         const myVillage = getVillage(e.tribe);
 
         if (e.state === 'chopping') {
-          return { ...e, state: 'idle' as const, stateTimer: 0, energy: Math.max(0, energy - 10), meat, carryingWood: true };
+          return { ...e, state: 'idle' as const, stateTimer: 0, energy: Math.max(0, energy - 10), meat };
         } else if (e.state === 'building') {
           const newHome = houses.find(h => h.ownerId === e.id && !e.homeId);
-          return { ...e, state: 'idle' as const, stateTimer: 0, energy: Math.max(0, energy - 10), meat, carryingWood: false, homeId: newHome?.id };
+          return { ...e, state: 'idle' as const, stateTimer: 0, energy: Math.max(0, energy - 10), meat, homeId: newHome?.id };
         } else if (e.state === 'training') {
           // Sparring boosts random combat stat slightly
           const boosted = { ...e.traits };
@@ -804,19 +806,21 @@ export function tick(state: WorldState): WorldState {
     }
 
     // Male without house, on forest tile → chop tree
-    if (e.gender === 'male' && !isChild(e) && !e.homeId && !e.carryingWood
+    if (e.gender === 'male' && !isChild(e)
         && biomes[e.position.y][e.position.x] === 'forest') {
       entities[i] = { ...e, state: 'chopping', stateTimer: CHOPPING_DURATION };
       continue;
     }
 
-    // Male carrying wood, in own village, on empty tile (no house, no one building) → build
+    // Male in village, has partner, no house, warehouse has enough wood → start building
     const eVillage = e.tribe >= 0 ? updatedVillages.find(v => v.tribe === e.tribe) : undefined;
     const tileOccupied = houses.some(h => h.position.x === e.position.x && h.position.y === e.position.y)
       || entities.some(o => o.id !== e.id && o.state === 'building' && o.position.x === e.position.x && o.position.y === e.position.y);
-    if (e.gender === 'male' && e.carryingWood && eVillage
+    if (e.gender === 'male' && !e.homeId && e.partnerId && eVillage
         && isInVillage(e.position, eVillage)
+        && eVillage.woodStore >= HOUSE_WOOD_COST
         && !tileOccupied) {
+      eVillage.woodStore -= HOUSE_WOOD_COST; // reserve wood
       entities[i] = { ...e, state: 'building', stateTimer: BUILDING_DURATION };
       continue;
     }
@@ -852,7 +856,6 @@ export function tick(state: WorldState): WorldState {
         case 'rest':
           break; // do nothing
         case 'return_home':
-        case 'return_with_wood':
           if (ctx.village) target = stepToward(entity.position, ctx.village.center, biomes, gridSize, entity.tribe, updatedVillages);
           break;
         case 'go_chop':
@@ -958,20 +961,20 @@ export function tick(state: WorldState): WorldState {
       }
     }
 
-    // Chopping: male without house, on forest, not carrying wood
-    if (e.gender === 'male' && !isChild(e) && !e.homeId && !e.carryingWood
+    if (e.gender === 'male' && !isChild(e)
         && biomes[e.position.y][e.position.x] === 'forest') {
       entities[i] = { ...e, state: 'chopping', stateTimer: CHOPPING_DURATION };
       continue;
     }
 
-    // Building: male with wood, in own village, on empty tile (no house, no one building)
     const postBuildV = e.tribe >= 0 ? updatedVillages.find(v => v.tribe === e.tribe) : undefined;
     const postTileOccupied = houses.some(h => h.position.x === e.position.x && h.position.y === e.position.y)
       || entities.some(o => o.id !== e.id && o.state === 'building' && o.position.x === e.position.x && o.position.y === e.position.y);
-    if (e.gender === 'male' && e.carryingWood && postBuildV
+    if (e.gender === 'male' && !e.homeId && e.partnerId && postBuildV
         && isInVillage(e.position, postBuildV)
+        && postBuildV.woodStore >= HOUSE_WOOD_COST
         && !postTileOccupied) {
+      postBuildV.woodStore -= HOUSE_WOOD_COST;
       entities[i] = { ...e, state: 'building', stateTimer: BUILDING_DURATION };
       continue;
     }
@@ -1099,6 +1102,7 @@ export function tick(state: WorldState): WorldState {
       name: `Tribe ${newTribeId}`,
       meatStore: 0,
       plantStore: 0,
+      woodStore: 0,
     });
     // Clear mountain around settlement center for passability
     for (let dy = -3; dy <= 3; dy++) {
@@ -1128,7 +1132,29 @@ export function tick(state: WorldState): WorldState {
     entities = nightCycle(entities, houses);
   }
 
-  // --- Step 8b: When male gets partnered, female gets his homeId ---
+  // --- Step 8b: Winter cold — houses consume wood, entities without heating take damage ---
+  const season = Math.floor(month / 3);
+  const isWinter = season === 3;
+  if (isWinter && tickNum % TICKS_PER_DAY === 0) {
+    // Once per day in winter: each house burns 1 wood
+    for (const v of updatedVillages) {
+      const houseCount = houses.filter(h => h.tribe === v.tribe).length;
+      const woodNeeded = houseCount * WINTER_WOOD_COST;
+      if (v.woodStore >= woodNeeded) {
+        v.woodStore -= woodNeeded;
+      } else {
+        v.woodStore = 0;
+        // Not enough wood — entities in this village take cold damage
+        for (let i = 0; i < entities.length; i++) {
+          if (entities[i].tribe === v.tribe) {
+            entities[i] = { ...entities[i], energy: Math.max(0, entities[i].energy - WINTER_COLD_DAMAGE) };
+          }
+        }
+      }
+    }
+  }
+
+  // --- Step 8c: When male gets partnered, female gets his homeId ---
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i];
     if (e.partnerId && !e.homeId) {

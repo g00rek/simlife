@@ -26,9 +26,17 @@ export interface Village {
   radius: number;
   color: RGB;
   name: string;
+  // Pantry (food)
   meatStore: number;
   plantStore: number;
+  // Warehouse (materials)
+  woodStore: number;
 }
+
+export const WOOD_PER_CHOP = 3;           // wood portions from chopping 1 forest tile
+export const HOUSE_WOOD_COST = 5;         // wood needed from warehouse to build a house
+export const WINTER_WOOD_COST = 1;        // wood consumed per house per day in winter
+export const WINTER_COLD_DAMAGE = 5;      // energy lost per tick without heating in winter
 
 // No food requirement for mating — they just need energy
 export const VILLAGE_OPTIMAL_POP = 12; // above this, mating energy cost rises
@@ -47,7 +55,6 @@ export interface Entity {
   meat: number;
   tribe: TribeId;
   homeId?: string;
-  carryingWood: boolean;
   partnerId?: string;    // bonded partner
   birthCooldown: number; // ticks until next pregnancy allowed (0 = ready)
   partnerTraits?: Traits; // stored father's traits during pregnancy

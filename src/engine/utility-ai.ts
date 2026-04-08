@@ -7,7 +7,6 @@ export type AIAction =
   | { type: 'rest' }
   | { type: 'eat' }
   | { type: 'go_chop'; target: Position }
-  | { type: 'return_with_wood' }
   | { type: 'go_hunt'; target: Position }
   | { type: 'return_home' }
   | { type: 'go_gather'; target: Position }
@@ -39,9 +38,20 @@ function scoreBuildHome(ctx: AIContext): number {
   if (ctx.entity.gender !== 'male') return 0;
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (ctx.entity.homeId) return 0;
-  const hasPartner = !!ctx.entity.partnerId;
-  if (ctx.entity.carryingWood) return hasPartner ? 0.95 : 0.85;
-  return hasPartner ? 0.9 : 0.8; // higher urgency with partner
+  if (!ctx.entity.partnerId) return 0; // need partner first
+  // Need wood in warehouse
+  if (!ctx.village || ctx.village.woodStore < 5) return 0; // not enough wood yet → go chop
+  return 0.9; // high priority — get back to village to build
+}
+
+function scoreChopFirewood(ctx: AIContext): number {
+  if (ctx.entity.gender !== 'male') return 0;
+  if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
+  if (!ctx.village) return 0;
+  const WOOD_MAX = 30;
+  if (ctx.village.woodStore >= WOOD_MAX) return 0;
+  const woodNeed = (WOOD_MAX - ctx.village.woodStore) / WOOD_MAX;
+  return woodNeed * 0.5; // lower priority than hunting
 }
 
 function scoreHunt(ctx: AIContext): number {
@@ -78,6 +88,7 @@ export function getScores(ctx: AIContext): Record<string, number> {
   return {
     survival: scoreSurvival(ctx),
     buildHome: scoreBuildHome(ctx),
+    firewood: scoreChopFirewood(ctx),
     hunt: scoreHunt(ctx),
     gather: scoreGather(ctx),
     returnHome: scoreReturnHome(ctx),
@@ -111,18 +122,11 @@ export function decideAction(ctx: AIContext): AIAction {
   // Build home
   const buildScore = scoreBuildHome(ctx);
   if (buildScore > 0) {
-    if (e.carryingWood) {
-      if (ctx.inVillage) {
-        // Will be detected as 'building' by tick logic
-        scores.push({ score: buildScore, action: () => ({ type: 'rest' }) });
-      } else {
-        scores.push({ score: buildScore, action: () => ({ type: 'return_with_wood' }) });
-      }
-    } else if (ctx.nearestForest) {
-      scores.push({ score: buildScore, action: () => ({ type: 'go_chop', target: ctx.nearestForest!.pos }) });
+    if (!ctx.inVillage) {
+      scores.push({ score: buildScore, action: () => ({ type: 'return_home' }) });
     } else {
-      // No forest in range — wander to find one
-      scores.push({ score: buildScore * 0.5, action: () => ({ type: 'leave_village' }) });
+      // In village, will be detected as 'building' by tick logic
+      scores.push({ score: buildScore, action: () => ({ type: 'rest' }) });
     }
   }
 
@@ -149,6 +153,18 @@ export function decideAction(ctx: AIContext): AIAction {
     } else {
       // No plants in sight — keep moving away to explore
       scores.push({ score: gatherScore * 0.8, action: () => ({ type: 'leave_village' }) });
+    }
+  }
+
+  // Chop firewood
+  const firewoodScore = scoreChopFirewood(ctx);
+  if (firewoodScore > 0) {
+    if (ctx.inVillage) {
+      scores.push({ score: firewoodScore, action: () => ({ type: 'leave_village' }) });
+    } else if (ctx.nearestForest) {
+      scores.push({ score: firewoodScore, action: () => ({ type: 'go_chop', target: ctx.nearestForest!.pos }) });
+    } else {
+      scores.push({ score: firewoodScore * 0.8, action: () => ({ type: 'leave_village' }) });
     }
   }
 
