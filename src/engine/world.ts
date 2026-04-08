@@ -1,9 +1,9 @@
 import type { Entity, Animal, Plant, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId } from './types';
 import {
   MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR,
-  BASE_PHEROMONE_RANGE, MATING_DURATION, PREGNANCY_DURATION, FIGHTING_DURATION, HUNTING_DURATION, GATHERING_DURATION,
-  ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
-  ENERGY_MATING_MIN, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
+  BASE_PHEROMONE_RANGE, MATING_DURATION, PREGNANCY_DURATION, FIGHTING_DURATION,
+  ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT, ENERGY_MATING_MIN,
+  HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   BASE_FOOD_SENSE_RANGE, ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
   PLANT_GROW_TIME, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
   CHOPPING_DURATION, BUILDING_DURATION, SPEED_MULTIPLIER,
@@ -25,9 +25,9 @@ function generateId(prefix = 'e'): string {
 
 function randomMaxAge(fertility: number = 1.0): number {
   // Higher fertility = shorter life (trade-off)
-  const baseAge = 60 + Math.floor(Math.random() * 21); // 60-80
-  const adjusted = Math.round(baseAge / fertility); // fertility 2.0 → 30-40 yrs, 0.5 → 120-160 yrs
-  return clamp(adjusted, 40, 120) * TICKS_PER_YEAR;
+  const baseAge = 50 + Math.floor(Math.random() * 21); // 50-70
+  const adjusted = Math.round(baseAge / fertility);
+  return clamp(adjusted, 35, 90) * TICKS_PER_YEAR;
 }
 
 export function ageInYears(e: Entity): number {
@@ -745,30 +745,41 @@ export function tick(state: WorldState): WorldState {
   // --- Step 2: Detect interactions (pre-movement) ---
   entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, entities);
 
-  // --- Step 2b: Detect hunting/gathering ---
+  // --- Step 2b: Instant hunting/gathering (on contact) ---
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i];
     if (e.state !== 'idle') continue;
 
-    // Males hunt animals on same tile
-    if (e.gender === 'male' && isHungry(e)) {
-      const prey = animals.find(a =>
+    // Males hunt animals on same tile — instant kill
+    if (e.gender === 'male') {
+      const preyIdx = animals.findIndex(a =>
         a.position.x === e.position.x && a.position.y === e.position.y
       );
-      if (prey) {
-        const huntTime = Math.max(1, HUNTING_DURATION - Math.floor(e.traits.strength / 4));
-        entities[i] = { ...e, state: 'hunting', stateTimer: huntTime };
+      if (preyIdx >= 0) {
+        animals.splice(preyIdx, 1);
+        const myV = getVillage(e.tribe);
+        if (myV) {
+          myV.meatStore += MEAT_PORTIONS_PER_HUNT;
+        } else {
+          entities[i] = { ...e, meat: e.meat + MEAT_PORTIONS_PER_HUNT };
+        }
         continue;
       }
     }
 
-    // Females gather plants on same tile
-    if (e.gender === 'female' && isHungry(e)) {
-      const plant = plants.find(p =>
+    // Females gather mature plants on same tile — instant pick
+    if (e.gender === 'female') {
+      const plantIdx = plants.findIndex(p =>
         p.mature && p.position.x === e.position.x && p.position.y === e.position.y
       );
-      if (plant) {
-        entities[i] = { ...e, state: 'gathering', stateTimer: GATHERING_DURATION };
+      if (plantIdx >= 0) {
+        plants.splice(plantIdx, 1);
+        const myV = getVillage(e.tribe);
+        if (myV) {
+          myV.plantStore += 1;
+        } else {
+          entities[i] = { ...e, energy: Math.min(ENERGY_MAX, e.energy + ENERGY_PLANT) };
+        }
         continue;
       }
     }
@@ -953,28 +964,33 @@ export function tick(state: WorldState): WorldState {
   // --- Step 4: Detect interactions (post-movement) ---
   entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, entities);
 
-  // --- Step 4b: Detect hunting/gathering (post-movement) ---
+  // --- Step 4b: Instant hunting/gathering (post-movement) ---
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i];
     if (e.state !== 'idle') continue;
 
-    if (e.gender === 'male' && isHungry(e)) {
-      const prey = animals.find(a =>
+    if (e.gender === 'male') {
+      const preyIdx = animals.findIndex(a =>
         a.position.x === e.position.x && a.position.y === e.position.y
       );
-      if (prey) {
-        const huntTime = Math.max(1, HUNTING_DURATION - Math.floor(e.traits.strength / 4));
-        entities[i] = { ...e, state: 'hunting', stateTimer: huntTime };
+      if (preyIdx >= 0) {
+        animals.splice(preyIdx, 1);
+        const myV = getVillage(e.tribe);
+        if (myV) myV.meatStore += MEAT_PORTIONS_PER_HUNT;
+        else entities[i] = { ...e, meat: e.meat + MEAT_PORTIONS_PER_HUNT };
         continue;
       }
     }
 
-    if (e.gender === 'female' && isHungry(e)) {
-      const plant = plants.find(p =>
+    if (e.gender === 'female') {
+      const plantIdx = plants.findIndex(p =>
         p.mature && p.position.x === e.position.x && p.position.y === e.position.y
       );
-      if (plant) {
-        entities[i] = { ...e, state: 'gathering', stateTimer: GATHERING_DURATION };
+      if (plantIdx >= 0) {
+        plants.splice(plantIdx, 1);
+        const myV = getVillage(e.tribe);
+        if (myV) myV.plantStore += 1;
+        else entities[i] = { ...e, energy: Math.min(ENERGY_MAX, e.energy + ENERGY_PLANT) };
         continue;
       }
     }

@@ -70,8 +70,8 @@ describe('createWorld', () => {
   it('creates all entities with maxAge between 40 and 120 years (adjusted by fertility)', () => {
     const world = createWorld({ gridSize: 30, entityCount: 20 });
     for (const entity of world.entities) {
-      expect(entity.maxAge).toBeGreaterThanOrEqual(40 * T);
-      expect(entity.maxAge).toBeLessThanOrEqual(120 * T);
+      expect(entity.maxAge).toBeGreaterThanOrEqual(35 * T);
+      expect(entity.maxAge).toBeLessThanOrEqual(90 * T);
     }
   });
 });
@@ -170,8 +170,8 @@ describe('aging and death', () => {
     const baby = next.entities.find(e => e.id !== 'e2');
     expect(baby).toBeDefined();
     expect(baby?.age).toBe(0);
-    expect(baby?.maxAge).toBeGreaterThanOrEqual(40 * T);
-    expect(baby?.maxAge).toBeLessThanOrEqual(120 * T);
+    expect(baby?.maxAge).toBeGreaterThanOrEqual(35 * T);
+    expect(baby?.maxAge).toBeLessThanOrEqual(90 * T);
   });
 });
 

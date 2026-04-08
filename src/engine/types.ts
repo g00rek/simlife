@@ -91,18 +91,18 @@ export interface House {
   partnerId?: string; // female living there
 }
 
-// Population
-export const MIN_REPRODUCTIVE_AGE = 18;
-export const MAX_REPRODUCTIVE_AGE = 50;
+// Population (gameplay-tuned)
+export const MIN_REPRODUCTIVE_AGE = 15;
+export const MAX_REPRODUCTIVE_AGE = 45;
 export const TICKS_PER_YEAR = 120; // 1 tick = 1 day, 10 days/month, 12 months/year
 export const BASE_PHEROMONE_RANGE = 1; // added to perception for mate sensing
 
 // Actions
-export const MATING_DURATION = 1;   // instant (evening)
-export const PREGNANCY_DURATION = 270; // 9 months in days
+export const MATING_DURATION = 1;    // instant (evening)
+export const PREGNANCY_DURATION = 60; // 6 months
 export const FIGHTING_DURATION = 1;  // 1 day
-export const HUNTING_DURATION = 1;   // 1 day
-export const GATHERING_DURATION = 1; // 1 day
+export const HUNTING_DURATION = 0;   // instant on contact
+export const GATHERING_DURATION = 0; // instant on contact
 
 // Energy
 export const ENERGY_MAX = 100;
@@ -112,7 +112,7 @@ export const ENERGY_MEAT = 50;
 export const ENERGY_PLANT = 35;
 export const ENERGY_MATING_MIN = 30;
 export const HUNGER_THRESHOLD = 40; // eat from pantry when truly hungry
-export const CHILD_AGE = 10; // children don't lose energy (years)
+export const CHILD_AGE = 5; // children don't work/fight/lose energy (years)
 
 // Resources
 export const BASE_FOOD_SENSE_RANGE = 3; // added to perception for food sensing
