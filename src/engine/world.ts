@@ -868,13 +868,22 @@ export function tick(state: WorldState): WorldState {
           break;
         case 'leave_village':
           if (ctx.village) {
-            const dx = entity.position.x - ctx.village.center.x;
-            const dy = entity.position.y - ctx.village.center.y;
-            target = {
-              x: entity.position.x + Math.sign(dx || (Math.random() < 0.5 ? 1 : -1)),
-              y: entity.position.y + Math.sign(dy || (Math.random() < 0.5 ? 1 : -1)),
-            };
-            if (!isValidMove(target, biomes, gridSize)) target = null;
+            // Try to walk away from village center; try all 4 dirs, pick one that leads outward
+            const awayDirs = [
+              { x: entity.position.x + 1, y: entity.position.y },
+              { x: entity.position.x - 1, y: entity.position.y },
+              { x: entity.position.x, y: entity.position.y + 1 },
+              { x: entity.position.x, y: entity.position.y - 1 },
+            ].filter(p => isValidMove(p, biomes, gridSize, entity.tribe, updatedVillages));
+            // Prefer direction away from village center
+            const vcx = ctx.village.center.x;
+            const vcy = ctx.village.center.y;
+            awayDirs.sort((a, b) => {
+              const da = Math.abs(a.x - vcx) + Math.abs(a.y - vcy);
+              const db = Math.abs(b.x - vcx) + Math.abs(b.y - vcy);
+              return db - da; // farther from center first
+            });
+            target = awayDirs[0] ?? null;
           }
           break;
         case 'wander':
