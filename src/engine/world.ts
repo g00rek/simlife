@@ -10,6 +10,7 @@ import {
   ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS, VILLAGE_OPTIMAL_POP,
 } from './types';
 import { generateBiomeGrid, isPassable, isPassableForRonin } from './biomes';
+import { decideAction, buildAIContext } from './utility-ai';
 
 interface CreateWorldOptions {
   gridSize: number;
@@ -101,10 +102,6 @@ function traitEnergyDrain(t: Traits): number {
   const total = t.strength + t.speed * 3 + t.perception;
   const baseline = 3 + 3 + 1;
   return Math.max(0, (total - baseline) * TRAIT_ENERGY_COST * t.metabolism);
-}
-
-function senseRange(e: Entity): number {
-  return 3 + e.traits.perception * 2; // how far entity can detect food/animals
 }
 
 // Fight: higher strength = higher win chance (weighted random)
@@ -843,119 +840,46 @@ export function tick(state: WorldState): WorldState {
 
     const inForest = biomes[entity.position.y][entity.position.x] === 'forest';
     const speed = Math.max(1, entity.traits.speed - (inForest ? FOREST_SPEED_PENALTY : 0));
-    const sense = senseRange(entity);
-    const myVillage = getVillage(entity.tribe);
 
-    // Each tick entity moves `speed` tiles (1-3), one step at a time
     for (let step = 0; step < speed; step++) {
       if (entity.state !== 'idle') break;
 
+      // Build AI context and decide action
+      const ctx = buildAIContext(entity, updatedVillages, animals, plants, entities, biomes, gridSize);
+      const action = decideAction(ctx);
+
       let target: Position | null = null;
-      const inOwnVillage = myVillage && isInVillage(entity.position, myVillage);
 
-      // === CHILDREN: stay in village, or walk home if outside ===
-      if (isChild(entity)) {
-        if (inOwnVillage) break; // stay put
-        if (myVillage) target = stepToward(entity.position, myVillage.center, biomes, gridSize, entity.tribe, updatedVillages);
-      }
-
-      // === MALES ===
-      else if (entity.gender === 'male') {
-
-        if (entity.carryingWood) {
-          // Carrying wood → return to village to build
-          if (myVillage && !inOwnVillage) {
-            target = stepToward(entity.position, myVillage.center, biomes, gridSize, entity.tribe, updatedVillages);
-          }
-          // In village with wood → will start building (detected in step 2b)
-        }
-
-        else if (!entity.homeId) {
-          // No house → find forest, chop wood
-          let bestDist = sense * 2 + 1;
-          for (let dy = -bestDist; dy <= bestDist; dy++) {
-            for (let dx = -bestDist; dx <= bestDist; dx++) {
-              const nx = entity.position.x + dx;
-              const ny = entity.position.y + dy;
-              if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && biomes[ny][nx] === 'forest') {
-                const d = Math.abs(dx) + Math.abs(dy);
-                if (d > 0 && d < bestDist) {
-                  bestDist = d;
-                  target = stepToward(entity.position, { x: nx, y: ny }, biomes, gridSize, entity.tribe, updatedVillages);
-                }
-              }
-            }
-          }
-        }
-
-        else if (inOwnVillage) {
-          // Has house, in village
-          const pantryLow = myVillage!.meatStore < 10;
-          if (pantryLow) {
-            // Go hunt — walk toward village edge
-            const dx = entity.position.x - myVillage!.center.x;
-            const dy = entity.position.y - myVillage!.center.y;
-            const away = {
+      switch (action.type) {
+        case 'rest':
+          break; // do nothing
+        case 'return_home':
+        case 'return_with_wood':
+          if (ctx.village) target = stepToward(entity.position, ctx.village.center, biomes, gridSize, entity.tribe, updatedVillages);
+          break;
+        case 'go_chop':
+          target = stepToward(entity.position, action.target, biomes, gridSize, entity.tribe, updatedVillages);
+          break;
+        case 'go_hunt':
+          target = stepToward(entity.position, action.target, biomes, gridSize, entity.tribe, updatedVillages);
+          break;
+        case 'go_gather':
+          target = stepToward(entity.position, action.target, biomes, gridSize, entity.tribe, updatedVillages);
+          break;
+        case 'leave_village':
+          if (ctx.village) {
+            const dx = entity.position.x - ctx.village.center.x;
+            const dy = entity.position.y - ctx.village.center.y;
+            target = {
               x: entity.position.x + Math.sign(dx || (Math.random() < 0.5 ? 1 : -1)),
               y: entity.position.y + Math.sign(dy || (Math.random() < 0.5 ? 1 : -1)),
             };
-            if (isValidMove(away, biomes, gridSize)) target = away;
+            if (!isValidMove(target, biomes, gridSize)) target = null;
           }
-          // else: stay in village (train, mate — handled by detectInteractions)
-        }
-
-        else {
-          // Has house, outside village — seek animals or return home
-          let bestDist = sense + 1;
-          for (const a of animals) {
-            const d = manhattan(entity.position, a.position);
-            if (d > 0 && d <= sense && d < bestDist) {
-              bestDist = d;
-              target = stepToward(entity.position, a.position, biomes, gridSize, entity.tribe, updatedVillages);
-            }
-          }
-          // No prey found → return home
-          if (!target && myVillage) {
-            target = stepToward(entity.position, myVillage.center, biomes, gridSize, entity.tribe, updatedVillages);
-          }
-        }
-      }
-
-      // === FEMALES ===
-      else {
-        if (inOwnVillage) {
-          // In village — go gather only if pantry low
-          const pantryLow = myVillage && myVillage.plantStore < 5;
-          if (pantryLow) {
-            const dx = entity.position.x - myVillage!.center.x;
-            const dy = entity.position.y - myVillage!.center.y;
-            const away = {
-              x: entity.position.x + Math.sign(dx || (Math.random() < 0.5 ? 1 : -1)),
-              y: entity.position.y + Math.sign(dy || (Math.random() < 0.5 ? 1 : -1)),
-            };
-            if (isValidMove(away, biomes, gridSize)) target = away;
-          }
-          // else: stay in village
-        } else {
-          // Outside village — seek plants or return home
-          let bestDist = sense + 1;
-          for (const p of plants) {
-            if (!p.mature) continue;
-            const d = manhattan(entity.position, p.position);
-            if (d > 0 && d <= sense && d < bestDist) {
-              bestDist = d;
-              target = stepToward(entity.position, p.position, biomes, gridSize, entity.tribe, updatedVillages);
-            }
-          }
-          if (!target && myVillage) {
-            target = stepToward(entity.position, myVillage.center, biomes, gridSize, entity.tribe, updatedVillages);
-          }
-        }
-      }
-
-      // === RONIN FALLBACK: random walk ===
-      if (!target && !myVillage) {
-        target = randomStepBiome(entity.position, gridSize, biomes);
+          break;
+        case 'wander':
+          target = randomStepBiome(entity.position, gridSize, biomes);
+          break;
       }
 
       if (target && moveGrid[target.y][target.x] < 2 && canEnterTile(target, entity.tribe, villages)) {
