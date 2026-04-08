@@ -121,7 +121,7 @@ export const CHILD_AGE = 3; // children don't work/fight/lose energy (years)
 export const INFANT_MORTALITY = 0.3; // 30% chance child dies at birth (historical rate)
 
 // Resources
-export const ANIMAL_COUNT = 15;
+export const ANIMAL_COUNT = 7;
 export const PLANT_COUNT = 30;
 export const PLANT_RESPAWN_INTERVAL = 100; // new plant every ~5 days
 
