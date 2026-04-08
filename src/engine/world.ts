@@ -6,7 +6,7 @@ import {
   HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
   PLANT_GROW_TIME, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
-  CHOPPING_DURATION, BUILDING_DURATION, SPEED_MULTIPLIER,
+  CHOPPING_DURATION, BUILDING_DURATION,
   ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS, VILLAGE_OPTIMAL_POP,
 } from './types';
 import { generateBiomeGrid, isPassable, isPassableForRonin } from './biomes';
@@ -812,12 +812,12 @@ export function tick(state: WorldState): WorldState {
     if (entity.state !== 'idle' || babyIds.has(entity.id)) continue;
 
     const inForest = biomes[entity.position.y][entity.position.x] === 'forest';
-    const rawSpeed = Math.max(1, entity.traits.speed - (inForest ? FOREST_SPEED_PENALTY : 0));
-    const steps = rawSpeed * SPEED_MULTIPLIER;
+    const speed = Math.max(1, entity.traits.speed - (inForest ? FOREST_SPEED_PENALTY : 0));
     const sense = senseRange(entity);
     const myVillage = getVillage(entity.tribe);
 
-    for (let step = 0; step < steps; step++) {
+    // Each tick entity moves `speed` tiles (1-3), one step at a time
+    for (let step = 0; step < speed; step++) {
       if (entity.state !== 'idle') break;
 
       let target: Position | null = null;

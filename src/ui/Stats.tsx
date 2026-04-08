@@ -1,5 +1,5 @@
 import type { WorldState, Entity } from '../engine/types';
-import { TICKS_PER_YEAR, CHILD_AGE } from '../engine/types';
+import { TICKS_PER_YEAR, TICKS_PER_DAY, CHILD_AGE } from '../engine/types';
 import { ageInYears } from '../engine/world';
 
 function isChild(e: Entity): boolean {
@@ -66,12 +66,13 @@ export function Stats({ world }: StatsProps) {
       <div style={panelStyle}>
         <div style={labelStyle}>Time</div>
         {(() => {
-          const ticksPerMonth = Math.floor(TICKS_PER_YEAR / 12);
-          const month = Math.floor((world.tick % TICKS_PER_YEAR) / Math.max(1, ticksPerMonth));
+          const ticksPerMonth = TICKS_PER_DAY * 10; // 100 ticks/month
+          const month = Math.floor((world.tick % TICKS_PER_YEAR) / ticksPerMonth);
           const seasonIdx = Math.floor(month / 3);
           const seasons = ['🌸 Spring', '☀ Summer', '🍂 Autumn', '❄ Winter'];
           const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-          const day = (world.tick % Math.max(1, ticksPerMonth)) + 1;
+          const dayInMonth = Math.floor((world.tick % ticksPerMonth) / TICKS_PER_DAY) + 1;
+          const timeOfDay = world.tick % TICKS_PER_DAY;
           return (
             <>
               <div style={{ fontSize: '20px', fontWeight: 'bold' }}>Year {year}</div>
@@ -79,7 +80,7 @@ export function Stats({ world }: StatsProps) {
                 {seasons[seasonIdx]} — {monthNames[month]}
               </div>
               <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>
-                Day {day} · tick {world.tick}
+                Day {dayInMonth} · {timeOfDay}/{TICKS_PER_DAY}
               </div>
             </>
           );

@@ -22,11 +22,11 @@ export function Controls({ running, speed, onToggle, onSpeedChange, onReset }: C
         </div>
         <input
           type="range"
-          min={10}
-          max={300}
-          step={10}
-          value={310 - speed}
-          onChange={e => onSpeedChange(310 - Number(e.target.value))}
+          min={1}
+          max={200}
+          step={1}
+          value={201 - speed}
+          onChange={e => onSpeedChange(201 - Number(e.target.value))}
           style={{ width: '100%' }}
         />
       </div>

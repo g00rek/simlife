@@ -64,7 +64,7 @@ export interface Animal {
   reproTimer: number; // ticks until next reproduction attempt
 }
 
-export const ANIMAL_REPRO_INTERVAL = 60; // ~6 months between reproduction
+export const ANIMAL_REPRO_INTERVAL = 600; // ~6 months between reproduction
 export const ANIMAL_REPRO_RANGE = 2;     // max animals on nearby tiles to reproduce
 export const ANIMAL_MAX = 40;            // carrying capacity
 export const ANIMAL_FLEE_RANGE = 1;      // animals flee humans within this range
@@ -76,12 +76,13 @@ export interface Plant {
   growTimer: number; // ticks until mature
 }
 
-export const PLANT_GROW_TIME = 60; // ~2 months to mature
-export const FOREST_REGROW_TIME = 360; // ~3 years for chopped forest to regrow
+export const PLANT_GROW_TIME = 600; // ~2 months to mature
+export const FOREST_REGROW_TIME = 3600; // ~3 years for chopped forest to regrow
 export const FIGHT_MIN_AGE = 16;
-export const CHOPPING_DURATION = 1; // 1 day
-export const BUILDING_DURATION = 3; // 3 days
-export const SPEED_MULTIPLIER = 8;  // trait speed × this = steps per day (8-24 steps)
+export const CHOPPING_DURATION = 5;  // half day
+export const BUILDING_DURATION = 20; // 2 days
+// Speed trait = tiles per tick (1-3). No multiplier — 1 tick = 1 step at speed 1.
+export const TICKS_PER_DAY = 10;
 
 export interface House {
   id: string;
@@ -94,19 +95,19 @@ export interface House {
 // Population (gameplay-tuned)
 export const MIN_REPRODUCTIVE_AGE = 15;
 export const MAX_REPRODUCTIVE_AGE = 45;
-export const TICKS_PER_YEAR = 120; // 1 tick = 1 day, 10 days/month, 12 months/year
+export const TICKS_PER_YEAR = 1200; // 10 ticks/day × 10 days/month × 12 months
 
 // Actions
-export const MATING_DURATION = 1;    // instant (evening)
-export const PREGNANCY_DURATION = 60; // 6 months
-export const FIGHTING_DURATION = 1;  // 1 day
+export const MATING_DURATION = 1;     // instant
+export const PREGNANCY_DURATION = 600; // 6 months (60 days × 10 ticks)
+export const FIGHTING_DURATION = 5;   // half day
 export const HUNTING_DURATION = 0;   // instant on contact
 export const GATHERING_DURATION = 0; // instant on contact
 
 // Energy
 export const ENERGY_MAX = 100;
 export const ENERGY_START = 80;
-export const ENERGY_DRAIN_INTERVAL = 10; // lose 1 energy every 10 days (~monthly)
+export const ENERGY_DRAIN_INTERVAL = 100; // lose 1 energy every ~10 days
 export const ENERGY_MEAT = 50;
 export const ENERGY_PLANT = 35;
 export const ENERGY_MATING_MIN = 30;
@@ -116,7 +117,7 @@ export const CHILD_AGE = 5; // children don't work/fight/lose energy (years)
 // Resources
 export const ANIMAL_COUNT = 15;
 export const PLANT_COUNT = 30;
-export const PLANT_RESPAWN_INTERVAL = 15; // new plant every ~half month
+export const PLANT_RESPAWN_INTERVAL = 50; // new plant every ~5 days
 
 // Biomes
 export type Biome = 'plains' | 'forest' | 'mountain' | 'water';
