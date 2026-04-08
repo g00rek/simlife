@@ -91,6 +91,14 @@ export function EntityPanel({ entity, onClose }: EntityPanelProps) {
         </span>
       </div>
       <div style={rowStyle}>
+        <span style={dimStyle}>Home:</span>
+        <span>{entity.homeId ?? 'none'}</span>
+      </div>
+      <div style={rowStyle}>
+        <span style={dimStyle}>Wood:</span>
+        <span>{entity.carryingWood ? '🪵 Yes' : 'No'}</span>
+      </div>
+      <div style={rowStyle}>
         <span style={dimStyle}>Position:</span>
         <span>{entity.position.x},{entity.position.y}</span>
       </div>
