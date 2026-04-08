@@ -821,11 +821,13 @@ export function tick(state: WorldState): WorldState {
       // Children in village → don't move at all
       if (isChild(entity) && inOwnVillage) break;
 
-      // Priority 0: Return to village (children always, females when fed, males only when seeking mate)
+      // Priority 0: Return to village
+      // Children: always. Females: when fed. Males: only if has house (otherwise go build one!)
+      // Males carrying wood: handled in priority 2c
       const shouldReturnHome = myVillage && !inOwnVillage && (
         isChild(entity) ||
         (entity.gender === 'female' && !isHungry(entity)) ||
-        (entity.gender === 'male' && !isHungry(entity) && isReproductive(entity) && entity.energy >= ENERGY_MATING_MIN)
+        (entity.gender === 'male' && !!entity.homeId && !entity.carryingWood)
       );
       if (shouldReturnHome && myVillage) {
         target = stepToward(entity.position, myVillage.center, biomes, gridSize, entity.tribe, updatedVillages);
@@ -870,9 +872,9 @@ export function tick(state: WorldState): WorldState {
         }
       }
 
-      // Priority 2: Fed + reproductive → seek mate (whole village range if inside, pheromone range if outside)
+      // Priority 2: Fed + reproductive + has house → seek mate
       if (!target && isReproductive(entity) && !isHungry(entity)
-          && entity.energy >= ENERGY_MATING_MIN) {
+          && entity.energy >= ENERGY_MATING_MIN && (entity.gender === 'female' || !!entity.homeId)) {
         const senseMateRange = inOwnVillage ? VILLAGE_RADIUS * 2 : senseMate;
         const oppositeGender = entity.gender === 'male' ? 'female' : 'male';
         let bestPos: Position | null = null;
@@ -925,7 +927,7 @@ export function tick(state: WorldState): WorldState {
 
       // Priority 2d: Adult male in village, no mate found → go hunt ONLY if pantry low
       const pantryLow = myVillage && (myVillage.meatStore < 10 || myVillage.plantStore < 5);
-      if (!target && inOwnVillage && entity.gender === 'male' && !isChild(entity) && entity.homeId && myVillage && pantryLow) {
+      if (!target && inOwnVillage && entity.gender === 'male' && !isChild(entity) && myVillage && pantryLow) {
         const dx = entity.position.x - myVillage.center.x;
         const dy = entity.position.y - myVillage.center.y;
         const awayX = entity.position.x + Math.sign(dx || (Math.random() < 0.5 ? 1 : -1));
