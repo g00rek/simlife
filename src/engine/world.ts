@@ -365,6 +365,7 @@ function detectInteractions(
   entities: Entity[],
   gridSize: number,
   skipIds: Set<string>,
+  villages: Village[],
 ): Entity[] {
   const tileGroups = new Map<number, Entity[]>();
   for (const e of entities) {
@@ -399,10 +400,12 @@ function detectInteractions(
 
     // Same-tribe training — only when truly idle (has house, has partner, pantry full, not carrying wood)
     if (!fightStarted) {
-      const trulyIdle = fightableMales.filter(e =>
-        !newActionIds.has(e.id) && e.tribe >= 0
-        && !!e.homeId && !!e.partnerId && !e.carryingWood
-      );
+      const trulyIdle = fightableMales.filter(e => {
+        if (newActionIds.has(e.id) || e.tribe < 0 || !e.homeId || !e.partnerId || e.carryingWood) return false;
+        // Must be inside own village
+        const v = e.tribe >= 0 ? villages.find(vl => vl.tribe === e.tribe) : undefined;
+        return v && Math.abs(e.position.x - v.center.x) + Math.abs(e.position.y - v.center.y) <= v.radius;
+      });
       if (trulyIdle.length >= 2 && trulyIdle[0].tribe === trulyIdle[1].tribe) {
         newActionIds.add(trulyIdle[0].id);
         newActionIds.add(trulyIdle[1].id);
@@ -757,7 +760,7 @@ export function tick(state: WorldState): WorldState {
   // (Animals move after human movement + hunting detection — see step 5)
 
   // --- Step 2: Detect interactions (pre-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds);
+  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages);
 
   // --- Step 2b: Instant hunting/gathering (on contact) ---
   for (let i = 0; i < entities.length; i++) {
@@ -921,7 +924,7 @@ export function tick(state: WorldState): WorldState {
   }
 
   // --- Step 4: Detect interactions (post-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds);
+  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages);
 
   // --- Step 4b: Instant hunting/gathering (post-movement) ---
   for (let i = 0; i < entities.length; i++) {
