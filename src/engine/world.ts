@@ -890,7 +890,7 @@ export function tick(state: WorldState): WorldState {
 
         // Inline instant hunt/gather on each step
         const stepV = getVillage(entity.tribe);
-        if (entity.gender === 'male' && (!stepV || stepV.meatStore < 20)) {
+        if (entity.gender === 'male' && (!stepV || stepV.meatStore < 50)) {
           const pi = animals.findIndex(a => a.position.x === entity.position.x && a.position.y === entity.position.y);
           if (pi >= 0) {
             animals.splice(pi, 1);
@@ -918,7 +918,7 @@ export function tick(state: WorldState): WorldState {
     if (e.state !== 'idle') continue;
 
     const postHuntV = getVillage(e.tribe);
-    const postShouldHunt = e.gender === 'male' && (!postHuntV || postHuntV.meatStore < 20);
+    const postShouldHunt = e.gender === 'male' && (!postHuntV || postHuntV.meatStore < 50);
     if (postShouldHunt) {
       const preyIdx = animals.findIndex(a =>
         a.position.x === e.position.x && a.position.y === e.position.y

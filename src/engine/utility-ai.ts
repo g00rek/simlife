@@ -46,7 +46,9 @@ function scoreHunt(ctx: AIContext): number {
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (!ctx.entity.homeId) return 0; // build house first
   if (!ctx.village) return 0;
-  const meatNeed = Math.max(0, (10 - ctx.village.meatStore) / 10);
+  const PANTRY_MAX = 50;
+  if (ctx.village.meatStore >= PANTRY_MAX) return 0; // full, no need
+  const meatNeed = (PANTRY_MAX - ctx.village.meatStore) / PANTRY_MAX;
   return meatNeed * 0.7;
 }
 
@@ -54,7 +56,9 @@ function scoreGather(ctx: AIContext): number {
   if (ctx.entity.gender !== 'female') return 0;
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (!ctx.village) return 0;
-  const plantNeed = Math.max(0, (5 - ctx.village.plantStore) / 5);
+  const PANTRY_MAX = 50;
+  if (ctx.village.plantStore >= PANTRY_MAX) return 0;
+  const plantNeed = (PANTRY_MAX - ctx.village.plantStore) / PANTRY_MAX;
   return plantNeed * 0.6;
 }
 
@@ -110,8 +114,8 @@ export function decideAction(ctx: AIContext): AIAction {
     } else if (ctx.nearestAnimal) {
       scores.push({ score: huntScore, action: () => ({ type: 'go_hunt', target: ctx.nearestAnimal!.pos }) });
     } else {
-      // Wander looking for prey
-      scores.push({ score: huntScore * 0.3, action: () => ({ type: 'wander' }) });
+      // No prey in sight — move AWAY from village to explore further
+      scores.push({ score: huntScore * 0.5, action: () => ({ type: 'leave_village' }) });
     }
   }
 
@@ -123,7 +127,8 @@ export function decideAction(ctx: AIContext): AIAction {
     } else if (ctx.nearestPlant) {
       scores.push({ score: gatherScore, action: () => ({ type: 'go_gather', target: ctx.nearestPlant!.pos }) });
     } else {
-      scores.push({ score: gatherScore * 0.3, action: () => ({ type: 'wander' }) });
+      // No plants in sight — keep moving away to explore
+      scores.push({ score: gatherScore * 0.5, action: () => ({ type: 'leave_village' }) });
     }
   }
 
