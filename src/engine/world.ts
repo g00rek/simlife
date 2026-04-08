@@ -145,17 +145,42 @@ function manhattan(a: Position, b: Position): number {
 }
 
 function stepToward(from: Position, to: Position, biomes?: Biome[][], gridSize?: number, tribe?: TribeId, villages?: Village[]): Position {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const primary = Math.abs(dx) >= Math.abs(dy)
-    ? { x: from.x + Math.sign(dx), y: from.y }
-    : { x: from.x, y: from.y + Math.sign(dy) };
-  if (!biomes || !gridSize || isValidMove(primary, biomes, gridSize, tribe, villages)) return primary;
-  const secondary = Math.abs(dx) >= Math.abs(dy)
-    ? { x: from.x, y: from.y + Math.sign(dy || 1) }
-    : { x: from.x + Math.sign(dx || 1), y: from.y };
-  if (isValidMove(secondary, biomes, gridSize, tribe, villages)) return secondary;
-  return from;
+  if (!biomes || !gridSize) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    return Math.abs(dx) >= Math.abs(dy)
+      ? { x: from.x + Math.sign(dx), y: from.y }
+      : { x: from.x, y: from.y + Math.sign(dy) };
+  }
+  // Try all 4 directions, pick the passable one closest to target
+  const candidates: Position[] = [
+    { x: from.x + 1, y: from.y },
+    { x: from.x - 1, y: from.y },
+    { x: from.x, y: from.y + 1 },
+    { x: from.x, y: from.y - 1 },
+  ];
+  let bestPos = from;
+  let bestDist = manhattan(from, to);
+  for (const c of candidates) {
+    if (!isValidMove(c, biomes, gridSize, tribe, villages)) continue;
+    const d = manhattan(c, to);
+    if (d < bestDist) {
+      bestDist = d;
+      bestPos = c;
+    }
+  }
+  // If no direction gets closer, try any passable (wall-following)
+  if (bestPos === from) {
+    // Shuffle to avoid always trying same direction
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    for (const c of candidates) {
+      if (isValidMove(c, biomes, gridSize, tribe, villages)) return c;
+    }
+  }
+  return bestPos;
 }
 
 function randomPos(gridSize: number): Position {
