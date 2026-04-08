@@ -81,7 +81,7 @@ export const FOREST_REGROW_TIME = 360; // ~3 years for chopped forest to regrow
 export const FIGHT_MIN_AGE = 16;
 export const CHOPPING_DURATION = 1; // 1 day
 export const BUILDING_DURATION = 3; // 3 days
-export const SPEED_MULTIPLIER = 5;  // trait speed × this = steps per day
+export const SPEED_MULTIPLIER = 8;  // trait speed × this = steps per day (8-24 steps)
 
 export interface House {
   id: string;
