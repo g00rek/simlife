@@ -144,7 +144,7 @@ export interface LogEntry {
 export const FOREST_PLANT_BONUS = 1; // extra plant spawns in forest per interval
 export const FOREST_SPEED_PENALTY = 1; // reduce steps by this in forest
 
-export const VILLAGE_RADIUS = 5;
+export const VILLAGE_RADIUS = 3;
 
 export interface WorldState {
   entities: Entity[];
