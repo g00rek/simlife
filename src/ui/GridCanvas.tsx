@@ -293,6 +293,58 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
       ctx.fill();
     }
 
+    // Draw tracking lines — males to nearest animal, females to nearest plant
+    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = 0.5;
+    for (const entity of world.entities) {
+      if (entity.state !== 'idle' || ageInYears(entity) < CHILD_AGE) continue;
+      const ex = entity.position.x * cellSize + cellSize / 2;
+      const ey = entity.position.y * cellSize + cellSize / 2;
+      const sense = 3 + entity.traits.perception * 2;
+
+      if (entity.gender === 'male') {
+        // Find nearest animal in range
+        let bestD = sense + 1;
+        let tx = -1, ty = -1;
+        for (const a of world.animals) {
+          const d = Math.abs(a.position.x - entity.position.x) + Math.abs(a.position.y - entity.position.y);
+          if (d > 0 && d <= sense && d < bestD) {
+            bestD = d;
+            tx = a.position.x * cellSize + cellSize / 2;
+            ty = a.position.y * cellSize + cellSize / 2;
+          }
+        }
+        if (tx >= 0) {
+          ctx.strokeStyle = 'rgba(139, 110, 99, 0.4)';
+          ctx.beginPath();
+          ctx.moveTo(ex, ey);
+          ctx.lineTo(tx, ty);
+          ctx.stroke();
+        }
+      } else {
+        // Find nearest mature plant in range
+        let bestD = sense + 1;
+        let tx = -1, ty = -1;
+        for (const p of world.plants) {
+          if (!p.mature) continue;
+          const d = Math.abs(p.position.x - entity.position.x) + Math.abs(p.position.y - entity.position.y);
+          if (d > 0 && d <= sense && d < bestD) {
+            bestD = d;
+            tx = p.position.x * cellSize + cellSize / 2;
+            ty = p.position.y * cellSize + cellSize / 2;
+          }
+        }
+        if (tx >= 0) {
+          ctx.strokeStyle = 'rgba(76, 175, 80, 0.4)';
+          ctx.beginPath();
+          ctx.moveTo(ex, ey);
+          ctx.lineTo(tx, ty);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.setLineDash([]);
+
     // Draw tile icons
     if (tileIcons.length < 300) {
       const iconSize = Math.max(8, Math.floor(cellSize * 0.35));
