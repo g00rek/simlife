@@ -1,7 +1,7 @@
 import type { Entity, Animal, Plant, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId } from './types';
 import {
   MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR,
-  PREGNANCY_DURATION, FIGHTING_DURATION, TICKS_PER_DAY, DAY_TICKS,
+  PREGNANCY_DURATION, BIRTH_COOLDOWN, INFANT_MORTALITY, FIGHTING_DURATION, TICKS_PER_DAY, DAY_TICKS,
   ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
   HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
@@ -25,9 +25,9 @@ function generateId(prefix = 'e'): string {
 
 function randomMaxAge(fertility: number = 1.0): number {
   // Higher fertility = shorter life (trade-off)
-  const baseAge = 50 + Math.floor(Math.random() * 21); // 50-70
+  const baseAge = 45 + Math.floor(Math.random() * 16); // 45-60
   const adjusted = Math.round(baseAge / fertility);
-  return clamp(adjusted, 35, 90) * TICKS_PER_YEAR;
+  return clamp(adjusted, 30, 75) * TICKS_PER_YEAR;
 }
 
 export function ageInYears(e: Entity): number {
@@ -323,6 +323,7 @@ export function createWorld(options: CreateWorldOptions): WorldState {
         meat: 0,
         tribe,
         carryingWood: false,
+        birthCooldown: 0,
       });
     }
   }
@@ -459,6 +460,7 @@ function nightCycle(entities: Entity[], _houses: House[]): Entity[] {
   return entities.map(e => {
     if (e.gender !== 'female' || e.state !== 'idle' || !e.partnerId || !e.homeId) return e;
     if (!isReproductive(e)) return e;
+    if (e.birthCooldown > 0) return e; // still recovering from last birth
     // Find partner
     const partner = entities.find(o => o.id === e.partnerId);
     if (!partner || !partner.homeId) return e;
@@ -490,7 +492,7 @@ export function tick(state: WorldState): WorldState {
 
   // --- Step 0: Age, energy drain, eat meat if hungry, remove dead ---
   const aged: Entity[] = state.entities.map(e => {
-    const a = { ...e, age: e.age + 1 };
+    const a = { ...e, age: e.age + 1, birthCooldown: Math.max(0, e.birthCooldown - 1) };
     if (!isChild(a) && a.age % ENERGY_DRAIN_INTERVAL === 0) {
       const baseDrain = 1 + traitEnergyDrain(a.traits);
       // Hungry entities move less → half energy drain
@@ -587,11 +589,19 @@ export function tick(state: WorldState): WorldState {
             traits: babyTraits,
             meat: 0,
             carryingWood: false,
+            birthCooldown: 0,
             tribe: (mother.partnerTribe === mother.tribe ? mother.tribe : -1) as TribeId,
-            homeId: mother.homeId, // baby lives in mother's house
+            homeId: mother.homeId,
           });
           const baby = babies[babies.length - 1];
-          log.push({ tick: tickNum, type: 'birth', entityId: baby.id, gender: baby.gender, age: 0 });
+
+          // Infant mortality — historical ~30% death rate at birth
+          if (Math.random() < INFANT_MORTALITY) {
+            babies.pop(); // remove baby
+            log.push({ tick: tickNum, type: 'death', entityId: baby.id, gender: baby.gender, age: 0, cause: 'starvation' }); // logged as infant death
+          } else {
+            log.push({ tick: tickNum, type: 'birth', entityId: baby.id, gender: baby.gender, age: 0 });
+          }
           grid[birthPos.y][birthPos.x]++;
         }
       }
@@ -722,7 +732,7 @@ export function tick(state: WorldState): WorldState {
             }
           }
         } else if (e.state === 'pregnant') {
-          return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat, partnerTraits: undefined };
+          return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat, partnerTraits: undefined, birthCooldown: BIRTH_COOLDOWN };
         }
 
         return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat };

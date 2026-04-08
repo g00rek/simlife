@@ -49,6 +49,7 @@ export interface Entity {
   homeId?: string;
   carryingWood: boolean;
   partnerId?: string;    // bonded partner
+  birthCooldown: number; // ticks until next pregnancy allowed (0 = ready)
   partnerTraits?: Traits; // stored father's traits during pregnancy
   partnerTribe?: TribeId;
 }
@@ -96,13 +97,14 @@ export interface House {
 }
 
 // Population (gameplay-tuned)
-export const MIN_REPRODUCTIVE_AGE = 15;
-export const MAX_REPRODUCTIVE_AGE = 45;
+export const MIN_REPRODUCTIVE_AGE = 12;
+export const MAX_REPRODUCTIVE_AGE = 40;
 export const TICKS_PER_YEAR = 2400; // 20 ticks/day × 10 days/month × 12 months
 
 // Actions
 // No mating state — pregnancy happens automatically at night
-export const PREGNANCY_DURATION = 1200; // 6 months (200 ticks/month × 6) (60 days × 10 ticks)
+export const PREGNANCY_DURATION = 600;  // ~30 days
+export const BIRTH_COOLDOWN = 1800;     // ~90 days after birth before next pregnancy (60 days × 10 ticks)
 export const FIGHTING_DURATION = 5;   // half day
 export const HUNTING_DURATION = 0;   // instant on contact
 export const GATHERING_DURATION = 0; // instant on contact
@@ -115,7 +117,8 @@ export const ENERGY_MEAT = 50;
 export const ENERGY_PLANT = 35;
 export const ENERGY_MATING_MIN = 30;
 export const HUNGER_THRESHOLD = 40; // eat from pantry when truly hungry
-export const CHILD_AGE = 5; // children don't work/fight/lose energy (years)
+export const CHILD_AGE = 3; // children don't work/fight/lose energy (years)
+export const INFANT_MORTALITY = 0.3; // 30% chance child dies at birth (historical rate)
 
 // Resources
 export const ANIMAL_COUNT = 15;
