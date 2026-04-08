@@ -933,6 +933,24 @@ export function tick(state: WorldState): WorldState {
         moveGrid[target.y][target.x]++;
         entity = { ...entity, position: target };
         entities[idx] = entity;
+
+        // Inline instant hunt/gather on each step
+        const stepV = getVillage(entity.tribe);
+        if (entity.gender === 'male' && (!stepV || stepV.meatStore < 20)) {
+          const pi = animals.findIndex(a => a.position.x === entity.position.x && a.position.y === entity.position.y);
+          if (pi >= 0) {
+            animals.splice(pi, 1);
+            if (stepV) stepV.meatStore += MEAT_PORTIONS_PER_HUNT;
+            else { entity = { ...entity, meat: entity.meat + MEAT_PORTIONS_PER_HUNT }; entities[idx] = entity; }
+          }
+        } else if (entity.gender === 'female') {
+          const pi = plants.findIndex(p => p.mature && p.position.x === entity.position.x && p.position.y === entity.position.y);
+          if (pi >= 0) {
+            plants.splice(pi, 1);
+            if (stepV) stepV.plantStore += 1;
+            else { entity = { ...entity, energy: Math.min(ENERGY_MAX, entity.energy + ENERGY_PLANT) }; entities[idx] = entity; }
+          }
+        }
       }
     }
   }
