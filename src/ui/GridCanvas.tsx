@@ -224,7 +224,6 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
 
     for (const [, group] of tileMap) {
       const count = group.length;
-      const hasMating = group.some(e => e.state === 'mating');
       const hasFighting = group.some(e => e.state === 'fighting');
       const hasTraining = group.some(e => e.state === 'training');
       const hasHunting = group.some(e => e.state === 'hunting');
@@ -265,8 +264,6 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
         tileIcons.push({ cx: baseCx, cy: baseCy, icon: '⚔' });
       } else if (hasTraining) {
         tileIcons.push({ cx: baseCx, cy: baseCy, icon: '💪' });
-      } else if (hasMating) {
-        tileIcons.push({ cx: baseCx, cy: baseCy, icon: '❤' });
       } else if (hasHunting) {
         tileIcons.push({ cx: baseCx, cy: baseCy, icon: '🏹' });
       } else if (hasGathering) {

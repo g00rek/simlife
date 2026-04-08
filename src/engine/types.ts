@@ -1,5 +1,5 @@
 export type Gender = 'male' | 'female';
-export type EntityState = 'idle' | 'mating' | 'pregnant' | 'fighting' | 'hunting' | 'gathering' | 'training' | 'chopping' | 'building';
+export type EntityState = 'idle' | 'pregnant' | 'fighting' | 'hunting' | 'gathering' | 'training' | 'chopping' | 'building';
 
 export interface Position {
   x: number;
@@ -46,10 +46,10 @@ export interface Entity {
   traits: Traits;
   meat: number;
   tribe: TribeId;
-  homeId?: string; // house this entity lives in
+  homeId?: string;
   carryingWood: boolean;
-  partnerTraits?: Traits;
-  partnerColor?: RGB;
+  partnerId?: string;    // bonded partner
+  partnerTraits?: Traits; // stored father's traits during pregnancy
   partnerTribe?: TribeId;
 }
 
@@ -64,7 +64,7 @@ export interface Animal {
   reproTimer: number; // ticks until next reproduction attempt
 }
 
-export const ANIMAL_REPRO_INTERVAL = 600; // ~6 months between reproduction
+export const ANIMAL_REPRO_INTERVAL = 1200; // ~6 months between reproduction
 export const ANIMAL_REPRO_RANGE = 2;     // max animals on nearby tiles to reproduce
 export const ANIMAL_MAX = 40;            // carrying capacity
 export const ANIMAL_FLEE_RANGE = 1;      // animals flee humans within this range
@@ -77,13 +77,15 @@ export interface Plant {
   growTimer: number; // ticks until mature
 }
 
-export const PLANT_GROW_TIME = 600; // ~2 months to mature
-export const FOREST_REGROW_TIME = 3600; // ~3 years for chopped forest to regrow
+export const PLANT_GROW_TIME = 1200; // ~2 months to mature
+export const FOREST_REGROW_TIME = 7200; // ~3 years for chopped forest to regrow
 export const FIGHT_MIN_AGE = 16;
 export const CHOPPING_DURATION = 5;  // half day
 export const BUILDING_DURATION = 20; // 2 days
 // Speed trait = tiles per tick (1-3). No multiplier — 1 tick = 1 step at speed 1.
-export const TICKS_PER_DAY = 10;
+export const TICKS_PER_DAY = 20; // 10 day + 10 night
+export const DAY_TICKS = 10;     // first 10 ticks = daytime
+export const NIGHT_TICKS = 10;   // last 10 ticks = nighttime
 
 export interface House {
   id: string;
@@ -96,11 +98,11 @@ export interface House {
 // Population (gameplay-tuned)
 export const MIN_REPRODUCTIVE_AGE = 15;
 export const MAX_REPRODUCTIVE_AGE = 45;
-export const TICKS_PER_YEAR = 1200; // 10 ticks/day × 10 days/month × 12 months
+export const TICKS_PER_YEAR = 2400; // 20 ticks/day × 10 days/month × 12 months
 
 // Actions
-export const MATING_DURATION = 1;     // instant
-export const PREGNANCY_DURATION = 600; // 6 months (60 days × 10 ticks)
+// No mating state — pregnancy happens automatically at night
+export const PREGNANCY_DURATION = 1200; // 6 months (200 ticks/month × 6) (60 days × 10 ticks)
 export const FIGHTING_DURATION = 5;   // half day
 export const HUNTING_DURATION = 0;   // instant on contact
 export const GATHERING_DURATION = 0; // instant on contact
@@ -108,7 +110,7 @@ export const GATHERING_DURATION = 0; // instant on contact
 // Energy
 export const ENERGY_MAX = 100;
 export const ENERGY_START = 80;
-export const ENERGY_DRAIN_INTERVAL = 100; // lose 1 energy every ~10 days
+export const ENERGY_DRAIN_INTERVAL = 200; // lose 1 energy every ~10 days (200 ticks)
 export const ENERGY_MEAT = 50;
 export const ENERGY_PLANT = 35;
 export const ENERGY_MATING_MIN = 30;
@@ -118,7 +120,7 @@ export const CHILD_AGE = 5; // children don't work/fight/lose energy (years)
 // Resources
 export const ANIMAL_COUNT = 15;
 export const PLANT_COUNT = 30;
-export const PLANT_RESPAWN_INTERVAL = 50; // new plant every ~5 days
+export const PLANT_RESPAWN_INTERVAL = 100; // new plant every ~5 days
 
 // Biomes
 export type Biome = 'plains' | 'forest' | 'mountain' | 'water';

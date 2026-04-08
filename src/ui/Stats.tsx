@@ -1,5 +1,5 @@
 import type { WorldState, Entity } from '../engine/types';
-import { TICKS_PER_YEAR, TICKS_PER_DAY, CHILD_AGE } from '../engine/types';
+import { TICKS_PER_YEAR, TICKS_PER_DAY, DAY_TICKS, CHILD_AGE } from '../engine/types';
 import { ageInYears } from '../engine/world';
 
 function isChild(e: Entity): boolean {
@@ -11,7 +11,7 @@ interface StatsProps {
 }
 
 export function Stats({ world }: StatsProps) {
-  const mating = world.entities.filter(e => e.state === 'mating').length;
+  const pregnant = world.entities.filter(e => e.state === 'pregnant').length;
   const hunting = world.entities.filter(e => e.state === 'hunting').length;
   const gathering = world.entities.filter(e => e.state === 'gathering').length;
   const avgAge = world.entities.length > 0
@@ -59,8 +59,8 @@ export function Stats({ world }: StatsProps) {
             </div>
           );
         })()}
-        <div style={{ fontSize: '11px', color: '#bb9af7', marginTop: '4px', visibility: mating > 0 ? 'visible' : 'hidden' }}>
-          &#10084; {Math.floor(mating / 2)} pairs
+        <div style={{ fontSize: '11px', color: '#bb9af7', marginTop: '4px', visibility: pregnant > 0 ? 'visible' : 'hidden' }}>
+          &#129328; {pregnant} pregnant
         </div>
       </div>
       <div style={panelStyle}>
@@ -73,14 +73,15 @@ export function Stats({ world }: StatsProps) {
           const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
           const dayInMonth = Math.floor((world.tick % ticksPerMonth) / TICKS_PER_DAY) + 1;
           const timeOfDay = world.tick % TICKS_PER_DAY;
+          const isNight = timeOfDay >= DAY_TICKS;
           return (
             <>
               <div style={{ fontSize: '20px', fontWeight: 'bold' }}>Year {year}</div>
               <div style={{ fontSize: '13px', color: '#ccc', marginTop: '2px' }}>
                 {seasons[seasonIdx]} — {monthNames[month]}
               </div>
-              <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>
-                Day {dayInMonth} · {timeOfDay}/{TICKS_PER_DAY}
+              <div style={{ fontSize: '11px', color: isNight ? '#7aa2f7' : '#e0af68', marginTop: '2px' }}>
+                {isNight ? '🌙 Night' : '☀ Day'} {dayInMonth} · {timeOfDay}/{TICKS_PER_DAY}
               </div>
             </>
           );

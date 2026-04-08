@@ -1,5 +1,5 @@
 import type { Entity, Position, Animal, Plant, Village, Biome } from './types';
-import { CHILD_AGE, HUNGER_THRESHOLD } from './types';
+import { CHILD_AGE, HUNGER_THRESHOLD, TICKS_PER_DAY, DAY_TICKS } from './types';
 import { ageInYears } from './world';
 
 // --- Action types ---
@@ -19,6 +19,7 @@ export interface AIContext {
   entity: Entity;
   village?: Village;
   inVillage: boolean;
+  isNight: boolean;
   nearestAnimal?: { pos: Position; dist: number };
   nearestPlant?: { pos: Position; dist: number };
   nearestForest?: { pos: Position; dist: number };
@@ -37,8 +38,9 @@ function scoreBuildHome(ctx: AIContext): number {
   if (ctx.entity.gender !== 'male') return 0;
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (ctx.entity.homeId) return 0;
-  if (ctx.entity.carryingWood) return 0.85; // has wood, go build!
-  return 0.8; // need to go chop
+  const hasPartner = !!ctx.entity.partnerId;
+  if (ctx.entity.carryingWood) return hasPartner ? 0.95 : 0.85;
+  return hasPartner ? 0.9 : 0.8; // higher urgency with partner
 }
 
 function scoreHunt(ctx: AIContext): number {
@@ -64,8 +66,8 @@ function scoreGather(ctx: AIContext): number {
 
 function scoreReturnHome(ctx: AIContext): number {
   if (!ctx.village || ctx.inVillage) return 0;
-  // Want to return if not doing anything important outside
-  return 0.3;
+  // Low priority — only return when nothing else to do
+  return 0.1;
 }
 
 // --- Main decision function ---
@@ -86,6 +88,12 @@ export function decideAction(ctx: AIContext): AIAction {
 
   // Children always stay/return
   if (ageInYears(e) < CHILD_AGE) {
+    if (!ctx.inVillage && ctx.village) return { type: 'return_home' };
+    return { type: 'rest' };
+  }
+
+  // Night: everyone returns home, in village = rest
+  if (ctx.isNight) {
     if (!ctx.inVillage && ctx.village) return { type: 'return_home' };
     return { type: 'rest' };
   }
@@ -125,8 +133,8 @@ export function decideAction(ctx: AIContext): AIAction {
     } else if (ctx.nearestAnimal) {
       scores.push({ score: huntScore, action: () => ({ type: 'go_hunt', target: ctx.nearestAnimal!.pos }) });
     } else {
-      // No prey in sight — move AWAY from village to explore further
-      scores.push({ score: huntScore * 0.5, action: () => ({ type: 'leave_village' }) });
+      // No prey in sight — keep exploring (higher score than return_home!)
+      scores.push({ score: huntScore * 0.8, action: () => ({ type: 'leave_village' }) });
     }
   }
 
@@ -139,7 +147,7 @@ export function decideAction(ctx: AIContext): AIAction {
       scores.push({ score: gatherScore, action: () => ({ type: 'go_gather', target: ctx.nearestPlant!.pos }) });
     } else {
       // No plants in sight — keep moving away to explore
-      scores.push({ score: gatherScore * 0.5, action: () => ({ type: 'leave_village' }) });
+      scores.push({ score: gatherScore * 0.8, action: () => ({ type: 'leave_village' }) });
     }
   }
 
@@ -172,6 +180,7 @@ export function buildAIContext(
   entities: Entity[],
   biomes: Biome[][],
   gridSize: number,
+  tick: number = 0,
 ): AIContext {
   const village = entity.tribe >= 0 ? villages.find(v => v.tribe === entity.tribe) : undefined;
   const inVillage = !!village && (
@@ -220,5 +229,6 @@ export function buildAIContext(
     ? entities.some(o => o.id !== entity.id && o.homeId === entity.homeId && o.state === 'idle')
     : false;
 
-  return { entity, village, inVillage, nearestAnimal, nearestPlant, nearestForest, hasPartnerInVillage };
+  const isNight = (tick % TICKS_PER_DAY) >= DAY_TICKS;
+  return { entity, village, inVillage, isNight, nearestAnimal, nearestPlant, nearestForest, hasPartnerInVillage };
 }

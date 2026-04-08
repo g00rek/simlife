@@ -1,13 +1,13 @@
 import type { Entity, Animal, Plant, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId } from './types';
 import {
   MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR,
-  MATING_DURATION, PREGNANCY_DURATION, FIGHTING_DURATION,
-  ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT, ENERGY_MATING_MIN,
+  PREGNANCY_DURATION, FIGHTING_DURATION, TICKS_PER_DAY, DAY_TICKS,
+  ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
   HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
   PLANT_GROW_TIME, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
   CHOPPING_DURATION, BUILDING_DURATION,
-  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, HUNT_KILL_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS, VILLAGE_OPTIMAL_POP,
+  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, HUNT_KILL_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS,
 } from './types';
 import { generateBiomeGrid, isPassable, isPassableForRonin } from './biomes';
 import { decideAction, buildAIContext } from './utility-ai';
@@ -196,14 +196,6 @@ function getVillageAt(pos: Position, villages: Village[]): Village | undefined {
   return villages.find(v => isInVillage(pos, v));
 }
 
-function matingEnergyCost(tribe: TribeId, entities: Entity[]): number {
-  if (tribe < 0) return ENERGY_MATING_MIN;
-  const tribePop = entities.filter(e => e.tribe === tribe).length;
-  if (tribePop <= VILLAGE_OPTIMAL_POP) return ENERGY_MATING_MIN;
-  // Over capacity: exponential increase in required energy
-  const overcrowding = tribePop / VILLAGE_OPTIMAL_POP;
-  return Math.min(ENERGY_MAX, Math.round(ENERGY_MATING_MIN * overcrowding));
-}
 
 function canEnterTile(pos: Position, tribe: TribeId, villages: Village[]): boolean {
   const v = getVillageAt(pos, villages);
@@ -369,14 +361,12 @@ export function createWorld(options: CreateWorldOptions): WorldState {
   return { entities, animals, plants, houses: [], biomes, villages, tick: 0, gridSize, log: [] };
 }
 
-// --- Interaction detection (mating/fighting) ---
+// --- Interaction detection (fighting/training only — mating removed) ---
 
 function detectInteractions(
   entities: Entity[],
   gridSize: number,
   skipIds: Set<string>,
-  _villages: Village[],
-  allEntities: Entity[],
 ): Entity[] {
   const tileGroups = new Map<number, Entity[]>();
   for (const e of entities) {
@@ -390,21 +380,16 @@ function detectInteractions(
 
   for (const [, group] of tileGroups) {
     const idleMales = group.filter(e => e.gender === 'male' && e.state === 'idle' && !skipIds.has(e.id));
-    const idleFemales = group.filter(e => e.gender === 'female' && e.state === 'idle' && !skipIds.has(e.id));
 
-    // Only adult males from DIFFERENT tribes fight (or anyone vs ronin)
     const fightableMales = idleMales.filter(e => ageInYears(e) >= FIGHT_MIN_AGE);
     let fightStarted = false;
     if (fightableMales.length >= 2) {
-      // Find first pair from different tribes
       for (let i = 0; i < fightableMales.length - 1 && !fightStarted; i++) {
         for (let j = i + 1; j < fightableMales.length && !fightStarted; j++) {
           const m1 = fightableMales[i];
           const m2 = fightableMales[j];
           if (m1.tribe !== m2.tribe || m1.tribe === -1 || m2.tribe === -1) {
-            const m1Fights = Math.random() < m1.traits.aggression / 10;
-            const m2Fights = Math.random() < m2.traits.aggression / 10;
-            if (m1Fights && m2Fights) {
+            if (Math.random() < m1.traits.aggression / 10 && Math.random() < m2.traits.aggression / 10) {
               newActionIds.add(m1.id);
               newActionIds.add(m2.id);
               fightStarted = true;
@@ -413,26 +398,8 @@ function detectInteractions(
         }
       }
     }
-    // Mating: male with house + his partner on same tile + both idle + reproductive + not pregnant
-    if (!fightStarted && idleMales.length >= 1 && idleFemales.length >= 1) {
-      const male = idleMales.find(e => {
-        if (!isReproductive(e) || newActionIds.has(e.id) || !e.homeId) return false;
-        const minEnergy = matingEnergyCost(e.tribe, allEntities);
-        return e.energy >= minEnergy;
-      });
-      if (male) {
-        // Find his partner (in his house) OR any unhoused reproductive female on same tile
-        const female = idleFemales.find(e =>
-          isReproductive(e) && e.state === 'idle' && (e.homeId === male.homeId || !e.homeId)
-        );
-        if (female) {
-          newActionIds.add(male.id);
-          newActionIds.add(female.id);
-        }
-      }
-    }
 
-    // Same-tribe adult males on same tile → training (sparring)
+    // Same-tribe training
     if (!fightStarted) {
       const sameTribeMales = fightableMales.filter(e => !newActionIds.has(e.id) && e.tribe >= 0);
       if (sameTribeMales.length >= 2 && sameTribeMales[0].tribe === sameTribeMales[1].tribe) {
@@ -446,19 +413,64 @@ function detectInteractions(
     if (!newActionIds.has(e.id)) return e;
     const key = e.position.y * gridSize + e.position.x;
     const group = tileGroups.get(key)!;
-    const otherActionMale = group.find(
-      o => o.id !== e.id && o.gender === 'male' && newActionIds.has(o.id)
-    );
-    if (e.gender === 'male' && otherActionMale) {
-      // Same tribe → training, different tribe → fighting
-      if (e.tribe >= 0 && otherActionMale.tribe === e.tribe) {
+    const otherMale = group.find(o => o.id !== e.id && o.gender === 'male' && newActionIds.has(o.id));
+    if (e.gender === 'male' && otherMale) {
+      if (e.tribe >= 0 && otherMale.tribe === e.tribe) {
         return { ...e, state: 'training' as const, stateTimer: 3 };
       }
       return { ...e, state: 'fighting' as const, stateTimer: FIGHTING_DURATION };
     }
-    // Higher fertility = faster mating
-    const matingTime = Math.max(1, Math.round(MATING_DURATION / e.traits.fertility));
-    return { ...e, state: 'mating' as const, stateTimer: matingTime };
+    return e;
+  });
+}
+
+// --- Pairing: unattached male + female in same village form a bond ---
+
+function detectPairing(entities: Entity[], villages: Village[]): Entity[] {
+  const updated = [...entities];
+  for (const v of villages) {
+    const inVillage = (e: Entity) =>
+      e.tribe === v.tribe && e.state === 'idle' && !e.partnerId
+      && isReproductive(e)
+      && Math.abs(e.position.x - v.center.x) + Math.abs(e.position.y - v.center.y) <= v.radius;
+
+    const singles = updated.filter(inVillage);
+    const males = singles.filter(e => e.gender === 'male');
+    const females = singles.filter(e => e.gender === 'female');
+
+    for (const male of males) {
+      const female = females.shift();
+      if (!female) break;
+      // Bond them
+      const mi = updated.findIndex(e => e.id === male.id);
+      const fi = updated.findIndex(e => e.id === female.id);
+      if (mi >= 0 && fi >= 0) {
+        updated[mi] = { ...updated[mi], partnerId: female.id };
+        updated[fi] = { ...updated[fi], partnerId: male.id };
+      }
+    }
+  }
+  return updated;
+}
+
+// --- Night cycle: pairs with house → pregnancy ---
+
+function nightCycle(entities: Entity[], _houses: House[]): Entity[] {
+  return entities.map(e => {
+    if (e.gender !== 'female' || e.state !== 'idle' || !e.partnerId || !e.homeId) return e;
+    if (!isReproductive(e)) return e;
+    // Find partner
+    const partner = entities.find(o => o.id === e.partnerId);
+    if (!partner || !partner.homeId) return e;
+    // She's in a home with her partner → get pregnant
+    const pregTime = Math.max(3, Math.round(PREGNANCY_DURATION / e.traits.fertility));
+    return {
+      ...e,
+      state: 'pregnant' as const,
+      stateTimer: pregTime,
+      partnerTraits: partner.traits,
+      partnerTribe: partner.tribe,
+    };
   });
 }
 
@@ -538,16 +550,7 @@ export function tick(state: WorldState): WorldState {
 
     const action = finishing[0].state;
 
-    if (action === 'mating') {
-      const male = finishing.find(e => e.gender === 'male');
-      const female = finishing.find(e => e.gender === 'female');
-      if (male && female) {
-        // Male goes free, female becomes pregnant
-        resolvedIds.add(male.id);
-        resolvedIds.add(female.id);
-        // Female stores partner info for birth (handled in pregnantIds below)
-      }
-    } else if (action === 'pregnant') {
+    if (action === 'pregnant') {
       // Pregnancy complete → give birth
       for (const mother of finishing) {
         resolvedIds.add(mother.id);
@@ -718,34 +721,8 @@ export function tick(state: WorldState): WorldState {
               energy = Math.min(ENERGY_MAX, energy + ENERGY_PLANT); // ronin eats directly
             }
           }
-        } else if (e.state === 'mating') {
-          if (e.gender === 'male') {
-            return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat };
-          }
-          const malePartner = entities.find(
-            o => o.id !== e.id && o.gender === 'male' && o.state === 'mating'
-              && o.position.x === e.position.x && o.position.y === e.position.y
-          );
-          const pregTime = Math.max(3, Math.round(PREGNANCY_DURATION / e.traits.fertility));
-          // Female moves into male's house
-          const maleHome = malePartner?.homeId;
-          if (maleHome) {
-            const house = houses.find(h => h.id === maleHome);
-            if (house) house.partnerId = e.id;
-          }
-          return {
-            ...e,
-            state: 'pregnant' as const,
-            stateTimer: pregTime,
-            energy,
-            meat,
-            homeId: maleHome ?? e.homeId,
-            partnerTraits: malePartner?.traits ?? e.traits,
-            partnerColor: malePartner?.color ?? e.color,
-            partnerTribe: malePartner?.tribe ?? e.tribe,
-          };
         } else if (e.state === 'pregnant') {
-          return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat, partnerTraits: undefined, partnerColor: undefined };
+          return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat, partnerTraits: undefined };
         }
 
         return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat };
@@ -764,7 +741,7 @@ export function tick(state: WorldState): WorldState {
   // (Animals move after human movement + hunting detection — see step 5)
 
   // --- Step 2: Detect interactions (pre-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, entities);
+  entities = detectInteractions(entities, gridSize, resolvedIds);
 
   // --- Step 2b: Instant hunting/gathering (on contact) ---
   for (let i = 0; i < entities.length; i++) {
@@ -845,7 +822,7 @@ export function tick(state: WorldState): WorldState {
       if (entity.state !== 'idle') break;
 
       // Build AI context and decide action
-      const ctx = buildAIContext(entity, updatedVillages, animals, plants, entities, biomes, gridSize);
+      const ctx = buildAIContext(entity, updatedVillages, animals, plants, entities, biomes, gridSize, tickNum);
       const action = decideAction(ctx);
 
       let target: Position | null = null;
@@ -919,7 +896,7 @@ export function tick(state: WorldState): WorldState {
   }
 
   // --- Step 4: Detect interactions (post-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, entities);
+  entities = detectInteractions(entities, gridSize, resolvedIds);
 
   // --- Step 4b: Instant hunting/gathering (post-movement) ---
   for (let i = 0; i < entities.length; i++) {
@@ -1112,6 +1089,29 @@ export function tick(state: WorldState): WorldState {
     for (const e of group) {
       const idx = entities.indexOf(e);
       if (idx >= 0) entities[idx] = { ...entities[idx], tribe: newTribeId };
+    }
+  }
+
+  // --- Step 7: Pairing (unattached male + female in village → bond) ---
+  entities = detectPairing(entities, updatedVillages);
+
+  // --- Step 8: Night cycle — paired couples with house → pregnancy ---
+  const isNight = (tickNum % TICKS_PER_DAY) >= DAY_TICKS;
+  if (isNight) {
+    entities = nightCycle(entities, houses);
+  }
+
+  // --- Step 8b: When male gets partnered, female gets his homeId ---
+  for (let i = 0; i < entities.length; i++) {
+    const e = entities[i];
+    if (e.partnerId && !e.homeId) {
+      const partner = entities.find(o => o.id === e.partnerId);
+      if (partner?.homeId) {
+        entities[i] = { ...e, homeId: partner.homeId };
+        // Also update house partnerId
+        const house = houses.find(h => h.id === partner.homeId);
+        if (house && !house.partnerId) house.partnerId = e.id;
+      }
     }
   }
 

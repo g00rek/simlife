@@ -93,6 +93,10 @@ export function EntityPanel({ entity, world, onClose }: EntityPanelProps) {
         </span>
       </div>
       <div style={rowStyle}>
+        <span style={dimStyle}>Partner:</span>
+        <span>{entity.partnerId ?? 'single'}</span>
+      </div>
+      <div style={rowStyle}>
         <span style={dimStyle}>Home:</span>
         <span>{entity.homeId ?? 'none'}</span>
       </div>
@@ -134,7 +138,6 @@ function Bar({ value, max, color }: { value: number; max: number; color: string 
 
 function stateLabel(entity: Entity): string {
   switch (entity.state) {
-    case 'mating': return '❤ Mating';
     case 'pregnant': return `🤰 Pregnant (${entity.stateTimer}t)`;
     case 'fighting': return '⚔ Fighting';
     case 'training': return '⚔ Training';
