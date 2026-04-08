@@ -68,6 +68,7 @@ export const ANIMAL_REPRO_INTERVAL = 600; // ~6 months between reproduction
 export const ANIMAL_REPRO_RANGE = 2;     // max animals on nearby tiles to reproduce
 export const ANIMAL_MAX = 40;            // carrying capacity
 export const ANIMAL_FLEE_RANGE = 1;      // animals flee humans within this range
+export const HUNT_KILL_RANGE = 2;       // bow range — instant kill within this distance
 
 export interface Plant {
   id: string;

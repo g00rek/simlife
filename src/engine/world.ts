@@ -7,7 +7,7 @@ import {
   ANIMAL_COUNT, PLANT_COUNT, PLANT_RESPAWN_INTERVAL,
   PLANT_GROW_TIME, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
   CHOPPING_DURATION, BUILDING_DURATION,
-  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS, VILLAGE_OPTIMAL_POP,
+  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_FLEE_RANGE, HUNT_KILL_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS, VILLAGE_OPTIMAL_POP,
 } from './types';
 import { generateBiomeGrid, isPassable, isPassableForRonin } from './biomes';
 import { decideAction, buildAIContext } from './utility-ai';
@@ -773,10 +773,10 @@ export function tick(state: WorldState): WorldState {
 
     // Males hunt animals on same tile — instant kill (only if pantry needs it)
     const huntVillage = getVillage(e.tribe);
-    const shouldHunt = e.gender === 'male' && (!huntVillage || huntVillage.meatStore < 20);
+    const shouldHunt = e.gender === 'male' && (!huntVillage || huntVillage.meatStore < 50);
     if (shouldHunt) {
       const preyIdx = animals.findIndex(a =>
-        a.position.x === e.position.x && a.position.y === e.position.y
+        Math.abs(a.position.x - e.position.x) + Math.abs(a.position.y - e.position.y) <= HUNT_KILL_RANGE
       );
       if (preyIdx >= 0) {
         animals.splice(preyIdx, 1);
@@ -900,7 +900,7 @@ export function tick(state: WorldState): WorldState {
         // Inline instant hunt/gather on each step
         const stepV = getVillage(entity.tribe);
         if (entity.gender === 'male' && (!stepV || stepV.meatStore < 50)) {
-          const pi = animals.findIndex(a => a.position.x === entity.position.x && a.position.y === entity.position.y);
+          const pi = animals.findIndex(a => Math.abs(a.position.x - entity.position.x) + Math.abs(a.position.y - entity.position.y) <= HUNT_KILL_RANGE);
           if (pi >= 0) {
             animals.splice(pi, 1);
             if (stepV) stepV.meatStore += MEAT_PORTIONS_PER_HUNT;
@@ -930,7 +930,7 @@ export function tick(state: WorldState): WorldState {
     const postShouldHunt = e.gender === 'male' && (!postHuntV || postHuntV.meatStore < 50);
     if (postShouldHunt) {
       const preyIdx = animals.findIndex(a =>
-        a.position.x === e.position.x && a.position.y === e.position.y
+        Math.abs(a.position.x - e.position.x) + Math.abs(a.position.y - e.position.y) <= HUNT_KILL_RANGE
       );
       if (preyIdx >= 0) {
         animals.splice(preyIdx, 1);
