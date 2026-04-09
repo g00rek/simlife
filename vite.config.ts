@@ -37,6 +37,8 @@ function logSaverPlugin(): Plugin {
 export default defineConfig({
   plugins: [react(), logSaverPlugin()],
   server: {
+    port: 5273,
+    strictPort: true,
     allowedHosts: ['evod.g00rek.ovh'],
   },
 })
