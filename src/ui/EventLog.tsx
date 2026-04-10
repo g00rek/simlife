@@ -1,5 +1,6 @@
 import type { LogEntry } from '../engine/types';
 import { TICKS_PER_YEAR } from '../engine/types';
+import { Circle, GenderFemale, GenderMale } from '@phosphor-icons/react';
 
 interface EventLogProps {
   log: LogEntry[];
@@ -33,9 +34,10 @@ export function EventLog({ log }: EventLogProps) {
           <div key={i} style={{ color: entry.type === 'birth' ? '#9ece6a' : '#f7768e' }}>
             <span style={{ color: '#555' }}>t{entry.tick}</span>
             {' '}
-            {entry.type === 'birth' ? '🟢' : '🔴'}
-            {' '}
-            {entry.gender === 'male' ? '♂' : '♀'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <Circle size={8} weight="fill" />
+              {entry.gender === 'male' ? <GenderMale size={11} /> : <GenderFemale size={11} />}
+            </span>
             {' '}
             {entry.type === 'birth'
               ? 'urodził się'

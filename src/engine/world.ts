@@ -1,4 +1,4 @@
-import type { Entity, Animal, Plant, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId } from './types';
+import type { Entity, Animal, Plant, Tree, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId } from './types';
 import {
   MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR,
   PREGNANCY_DURATION, BIRTH_COOLDOWN, INFANT_MORTALITY, MATERNAL_MORTALITY, FIGHTING_DURATION, TICKS_PER_DAY, DAY_TICKS, PHEROMONE_CHANCE, MATE_COOLDOWN,
@@ -7,16 +7,18 @@ import {
   ANIMAL_COUNT, PLANT_COUNT, PLANT_MAX, PLANT_RESPAWN_INTERVAL,
   PLANT_PORTIONS, PLANT_PORTIONS_PER_GATHER, PLANT_SPRING_FRUIT_CHANCE, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
   CHOPPING_DURATION, BUILDING_DURATION,
-  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_HUNT_MIN_POPULATION, ANIMAL_FLEE_RANGE, HUNT_KILL_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS, VILLAGE_RADIUS,
-  WOOD_PER_CHOP, HOUSE_WOOD_COST, WINTER_WOOD_COST, WINTER_COLD_DAMAGE,
+  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_HUNT_MIN_POPULATION, ANIMAL_FLEE_RANGE, HUNT_KILL_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS,
+  WOOD_PER_CHOP, HOUSE_WOOD_COST, WINTER_WOOD_COST, WINTER_COLD_DAMAGE, NEAR_HOME_RANGE,
 } from './types';
 import { generateBiomeGrid, isPassable } from './biomes';
+import type { BiomeGenParams } from './biomes';
 import { decideAction, buildAIContext, actionToGoal } from './utility-ai';
 
 interface CreateWorldOptions {
   gridSize: number;
   entityCount: number;
   villageCount?: number; // 1-3, default 3
+  biomeParams?: Partial<BiomeGenParams>;
 }
 
 let nextId = 0;
@@ -198,14 +200,7 @@ function manhattan(a: Position, b: Position): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-function stepToward(from: Position, to: Position, biomes?: Biome[][], gridSize?: number, tribe?: TribeId, villages?: Village[]): Position {
-  if (!biomes || !gridSize) {
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    return Math.abs(dx) >= Math.abs(dy)
-      ? { x: from.x + Math.sign(dx), y: from.y }
-      : { x: from.x, y: from.y + Math.sign(dy) };
-  }
+function stepToward(from: Position, to: Position, biomes: Biome[][], gridSize: number): Position {
   // Try all 4 directions, pick the passable one closest to target
   const candidates: Position[] = [
     { x: from.x + 1, y: from.y },
@@ -216,7 +211,7 @@ function stepToward(from: Position, to: Position, biomes?: Biome[][], gridSize?:
   let bestPos = from;
   let bestDist = manhattan(from, to);
   for (const c of candidates) {
-    if (!isValidMove(c, biomes, gridSize, tribe, villages)) continue;
+    if (!isValidMove(c, biomes, gridSize)) continue;
     const d = manhattan(c, to);
     if (d < bestDist) {
       bestDist = d;
@@ -225,13 +220,12 @@ function stepToward(from: Position, to: Position, biomes?: Biome[][], gridSize?:
   }
   // If no direction gets closer, try any passable (wall-following)
   if (bestPos === from) {
-    // Shuffle to avoid always trying same direction
     for (let i = candidates.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
     }
     for (const c of candidates) {
-      if (isValidMove(c, biomes, gridSize, tribe, villages)) return c;
+      if (isValidMove(c, biomes, gridSize)) return c;
     }
   }
   return bestPos;
@@ -244,19 +238,18 @@ function randomPos(gridSize: number): Position {
   };
 }
 
-function isInVillage(pos: Position, village: Village): boolean {
-  return manhattan(pos, village.center) <= village.radius;
+function isNearTribeHouses(pos: Position, tribe: TribeId, houses: House[]): boolean {
+  return houses.some(h => h.tribe === tribe && manhattan(pos, h.position) <= NEAR_HOME_RANGE);
 }
 
-function getVillageAt(pos: Position, villages: Village[]): Village | undefined {
-  return villages.find(v => isInVillage(pos, v));
+function hasStructureAt(pos: Position, houses: House[], villages: Village[]): boolean {
+  const hasHouse = houses.some(h => h.position.x === pos.x && h.position.y === pos.y);
+  if (hasHouse) return true;
+  return villages.some(v => v.stockpile?.x === pos.x && v.stockpile?.y === pos.y);
 }
 
-
-function canEnterTile(pos: Position, tribe: TribeId, villages: Village[]): boolean {
-  const v = getVillageAt(pos, villages);
-  if (!v) return true; // not in any village — free land
-  return v.tribe === tribe; // can only enter own village
+function isRoadTile(pos: Position, biomes: Biome[][]): boolean {
+  return biomes[pos.y]?.[pos.x] === 'road';
 }
 
 function randomPassablePos(biomes: Biome[][], gridSize: number): Position {
@@ -275,14 +268,9 @@ function randomForestPos(biomes: Biome[][], gridSize: number): Position {
   return randomPassablePos(biomes, gridSize); // fallback if map has very little forest
 }
 
-function isValidMove(pos: Position, biomes: Biome[][], gridSize: number, tribe?: TribeId, villages?: Village[]): boolean {
+function isValidMove(pos: Position, biomes: Biome[][], gridSize: number): boolean {
   if (pos.x < 0 || pos.x >= gridSize || pos.y < 0 || pos.y >= gridSize) return false;
-  const passable = isPassable(biomes[pos.y][pos.x]);
-  if (!passable) return false;
-  if (tribe !== undefined && villages) {
-    if (!canEnterTile(pos, tribe, villages)) return false;
-  }
-  return true;
+  return isPassable(biomes[pos.y][pos.x]);
 }
 
 function randomStepBiome(position: Position, gridSize: number, biomes: Biome[][]): Position {
@@ -304,66 +292,97 @@ function randomStepBiome(position: Position, gridSize: number, biomes: Biome[][]
 export function createWorld(options: CreateWorldOptions): WorldState {
   const { gridSize, entityCount, villageCount = 3 } = options;
   const numVillages = Math.min(3, Math.max(1, villageCount));
-  const biomes = generateBiomeGrid(gridSize);
+  const biomes = generateBiomeGrid(gridSize, options.biomeParams);
 
-  // Village definitions (up to 3)
+  // Tribe definitions (up to 3)
   const allTribeColors: RGB[] = [[220, 60, 60], [60, 100, 220], [60, 180, 60]];
   const allTribeNames = ['Red Tribe', 'Blue Tribe', 'Green Tribe'];
-  const allCenters: Position[] = [
-    { x: Math.floor(gridSize * 0.2), y: Math.floor(gridSize * 0.5) },
-    { x: Math.floor(gridSize * 0.8), y: Math.floor(gridSize * 0.5) },
-    { x: Math.floor(gridSize * 0.5), y: Math.floor(gridSize * 0.8) },
-  ];
+  // Find village start positions on plains, spread apart
+  const startPositions: Position[] = [];
+  const minDist = Math.floor(gridSize * 0.3);
+  for (let v = 0; v < numVillages; v++) {
+    let best: Position | null = null;
+    let bestScore = -1;
+    for (let attempt = 0; attempt < 500; attempt++) {
+      const x = 3 + Math.floor(Math.random() * (gridSize - 6));
+      const y = 3 + Math.floor(Math.random() * (gridSize - 6));
+      if (biomes[y][x] !== 'plains') continue;
+      // Check area around is mostly passable
+      let passable = 0;
+      for (let dy = -2; dy <= 2; dy++)
+        for (let dx = -2; dx <= 2; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && isPassable(biomes[ny][nx])) passable++;
+        }
+      if (passable < 15) continue; // need mostly open area
+      // Distance from other villages
+      const closest = startPositions.reduce((d, p) => Math.min(d, Math.abs(p.x - x) + Math.abs(p.y - y)), Infinity);
+      if (closest < minDist) continue;
+      const score = passable + closest * 0.1;
+      if (score > bestScore) { bestScore = score; best = { x, y }; }
+    }
+    if (best) startPositions.push(best);
+    else startPositions.push(randomPassablePos(biomes, gridSize)); // fallback
+  }
   const tribeColors = allTribeColors.slice(0, numVillages);
   const tribeNames = allTribeNames.slice(0, numVillages);
-  const villageCenters = allCenters.slice(0, numVillages);
 
-  // Ensure village centers are on passable terrain
-  for (const vc of villageCenters) {
-    if (!isPassable(biomes[vc.y][vc.x])) {
-      biomes[vc.y][vc.x] = 'plains';
-    }
-    // Clear area around village center + buffer zone (no mountains near villages)
-    const clearRadius = VILLAGE_RADIUS + 3;
-    for (let dy = -clearRadius; dy <= clearRadius; dy++) {
-      for (let dx = -clearRadius; dx <= clearRadius; dx++) {
-        if (Math.abs(dx) + Math.abs(dy) <= clearRadius) {
-          const nx = vc.x + dx;
-          const ny = vc.y + dy;
+  // Clear small area around start positions so entities can spawn
+  for (const sp of startPositions) {
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        if (Math.abs(dx) + Math.abs(dy) <= 2) {
+          const nx = sp.x + dx;
+          const ny = sp.y + dy;
           if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
-            if (biomes[ny][nx] !== 'plains') biomes[ny][nx] = 'plains';
+            if (!isPassable(biomes[ny][nx])) biomes[ny][nx] = 'plains';
           }
         }
       }
     }
   }
 
-  const villages: Village[] = villageCenters.map((center, i) => ({
+  const villages: Village[] = startPositions.map((sp, i) => ({
     tribe: i as TribeId,
-    center,
-    radius: VILLAGE_RADIUS,
     color: tribeColors[i],
     name: tribeNames[i],
+    stockpile: { ...sp },
     meatStore: 10,
     plantStore: 15,
-    woodStore: 10, // some firewood to start
+    woodStore: 10,
   }));
+
+  // Create initial road ring around each stockpile (8-neighborhood).
+  for (const village of villages) {
+    const center = village.stockpile;
+    if (!center) continue;
+    biomes[center.y][center.x] = 'plains';
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = center.x + dx;
+        const ny = center.y + dy;
+        if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) continue;
+        biomes[ny][nx] = 'road';
+      }
+    }
+  }
 
   const entities: Entity[] = [];
   const perTribe = Math.floor(entityCount / numVillages);
 
   for (let t = 0; t < numVillages; t++) {
     const tribe = t as TribeId;
-    const vc = villageCenters[t];
+    const sp = startPositions[t];
     for (let i = 0; i < perTribe; i++) {
       const traits = randomTraits();
-      // Spawn near village center
+      // Spawn near start position
       let pos: Position;
       for (let attempt = 0; attempt < 50; attempt++) {
-        const ox = Math.floor(Math.random() * (VILLAGE_RADIUS * 2 + 1)) - VILLAGE_RADIUS;
-        const oy = Math.floor(Math.random() * (VILLAGE_RADIUS * 2 + 1)) - VILLAGE_RADIUS;
-        const candidate = { x: vc.x + ox, y: vc.y + oy };
-        if (Math.abs(ox) + Math.abs(oy) <= VILLAGE_RADIUS
+        const ox = Math.floor(Math.random() * 5) - 2;
+        const oy = Math.floor(Math.random() * 5) - 2;
+        const candidate = { x: sp.x + ox, y: sp.y + oy };
+        if (Math.abs(ox) + Math.abs(oy) <= 2
             && candidate.x >= 0 && candidate.x < gridSize
             && candidate.y >= 0 && candidate.y < gridSize
             && isPassable(biomes[candidate.y][candidate.x])) {
@@ -371,7 +390,7 @@ export function createWorld(options: CreateWorldOptions): WorldState {
           break;
         }
       }
-      pos ??= vc;
+      pos ??= sp;
 
       entities.push({
         id: generateId('e'),
@@ -400,14 +419,9 @@ export function createWorld(options: CreateWorldOptions): WorldState {
 
   const animals: Animal[] = [];
   for (let i = 0; i < ANIMAL_COUNT; i++) {
-    let pos: Position;
-    for (let attempt = 0; ; attempt++) {
-      pos = randomPassablePos(biomes, gridSize);
-      if (!getVillageAt(pos, villages) || attempt > 30) break;
-    }
     animals.push({
       id: generateId('a'),
-      position: pos,
+      position: randomPassablePos(biomes, gridSize),
       reproTimer: Math.floor(Math.random() * ANIMAL_REPRO_INTERVAL),
     });
   }
@@ -415,21 +429,26 @@ export function createWorld(options: CreateWorldOptions): WorldState {
   const plants: Plant[] = [];
   for (let i = 0; i < PLANT_COUNT; i++) {
     const mature = i < PLANT_COUNT / 2;
-    // Spawn outside villages
-    let pos: Position;
-    for (let attempt = 0; ; attempt++) {
-      pos = randomForestPos(biomes, gridSize);
-      if (!getVillageAt(pos, villages) || attempt > 30) break;
-    }
     plants.push({
       id: generateId('p'),
-      position: pos,
+      position: randomForestPos(biomes, gridSize),
       portions: mature ? PLANT_PORTIONS : 0,
       maxPortions: PLANT_PORTIONS,
     });
   }
 
-  return { entities, animals, plants, houses: [], biomes, villages, tick: 0, gridSize, log: [] };
+  // Place a tree on every forest tile
+  const trees: Tree[] = [];
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      if (biomes[y][x] === 'forest') {
+        const isFruitTree = Math.random() < 0.2; // ~20% fruit trees
+        trees.push({ id: generateId('t'), position: { x, y }, chopped: false, fruiting: isFruitTree, hasFruit: false });
+      }
+    }
+  }
+
+  return { entities, animals, plants, trees, houses: [], biomes, villages, tick: 0, gridSize, log: [] };
 }
 
 // --- Interaction detection (fighting/training only — mating removed) ---
@@ -473,12 +492,11 @@ function detectInteractions(
       }
     }
 
-    // Same-tribe training — only when truly idle in village
+    // Same-tribe training — only when truly idle near settlement
     if (!fightStarted) {
       const trulyIdle = fightableMales.filter(e => {
         if (newActionIds.has(e.id)) return false;
-        const v = villages.find(vl => vl.tribe === e.tribe);
-        return v && Math.abs(e.position.x - v.center.x) + Math.abs(e.position.y - v.center.y) <= v.radius;
+        return isNearTribeHouses(e.position, e.tribe, houses);
       });
       if (trulyIdle.length >= 2 && trulyIdle[0].tribe === trulyIdle[1].tribe) {
         newActionIds.add(trulyIdle[0].id);
@@ -559,14 +577,21 @@ function pheromoneMating(entities: Entity[]): Entity[] {
 export function tick(state: WorldState): WorldState {
   const { gridSize } = state;
   const biomes = state.biomes.map(row => [...row]);
+  let trees = state.trees.map(t => ({ ...t, position: { ...t.position } }));
   const tickNum = state.tick + 1;
-  const updatedVillages = state.villages.map(v => ({ ...v, center: { ...v.center }, color: [...v.color] as RGB }));
+  const updatedVillages = state.villages.map(v => ({ ...v, color: [...v.color] as RGB }));
   function getVillage(tribe: TribeId) {
     return updatedVillages[tribe];
   }
   let animals = state.animals.map(a => ({ ...a, position: { ...a.position } }));
   let plants = state.plants.map(p => ({ ...p, position: { ...p.position } }));
-  const houses = state.houses.map(h => ({ ...h, position: { ...h.position } }));
+  let houses = state.houses.map(h => ({ ...h, position: { ...h.position } }));
+  const stockpileTiles = new Set(
+    updatedVillages
+      .filter(v => v.stockpile)
+      .map(v => `${v.stockpile!.x},${v.stockpile!.y}`),
+  );
+  houses = houses.filter(h => !stockpileTiles.has(`${h.position.x},${h.position.y}`));
   const log: LogEntry[] = [];
 
   // --- Step 0: Age, energy drain, eat meat if hungry, remove dead ---
@@ -743,10 +768,7 @@ export function tick(state: WorldState): WorldState {
     } else if (action === 'chopping') {
       for (const chopper of finishing) {
         resolvedIds.add(chopper.id);
-        if (biomes[chopper.position.y][chopper.position.x] === 'forest') {
-          biomes[chopper.position.y][chopper.position.x] = 'plains';
-        }
-        // All wood goes to warehouse
+        // Gather wood from forest — trees stay, forest stays
         const chopV = getVillage(chopper.tribe);
         if (chopV) chopV.woodStore += WOOD_PER_CHOP;
       }
@@ -754,6 +776,8 @@ export function tick(state: WorldState): WorldState {
       // Done building → create house for village pool
       for (const builder of finishing) {
         resolvedIds.add(builder.id);
+        if (isRoadTile(builder.position, biomes)) continue;
+        if (hasStructureAt(builder.position, houses, updatedVillages)) continue;
         const newHouse: House = {
           id: generateId('h'),
           position: { ...builder.position },
@@ -923,15 +947,18 @@ export function tick(state: WorldState): WorldState {
     if (e.gender !== 'male' || isChild(e)) continue;
     if (e.state !== 'idle') continue;
     const eVillage = updatedVillages.find(v => v.tribe === e.tribe);
-    if (!eVillage || !isInVillage(e.position, eVillage)) continue;
-    if (eVillage.woodStore < HOUSE_WOOD_COST) continue;
+    if (!eVillage || eVillage.woodStore < HOUSE_WOOD_COST) continue;
+    // Must be adjacent to an existing tribe house (or first house = anywhere)
+    const tribeHouses = houses.filter(h => h.tribe === e.tribe);
+    if (tribeHouses.length > 0 && !tribeHouses.some(h => manhattan(e.position, h.position) === 1)) continue;
     // Check if village needs houses: homeless females > free houses
     const tribeFemales = entities.filter(o => o.tribe === e.tribe && o.gender === 'female' && !isChild(o) && !o.homeId);
     const freeHouses = houses.filter(h => h.tribe === e.tribe && !h.occupantId);
     const alreadyBuilding = entities.some(o => o.tribe === e.tribe && o.state === 'building');
     if (tribeFemales.length <= freeHouses.length && !alreadyBuilding) continue;
     if (tribeFemales.length === 0) continue;
-    const tileOccupied = houses.some(h => h.position.x === e.position.x && h.position.y === e.position.y)
+    if (isRoadTile(e.position, biomes)) continue;
+    const tileOccupied = hasStructureAt(e.position, houses, updatedVillages)
       || entities.some(o => o.id !== e.id && o.state === 'building' && o.position.x === e.position.x && o.position.y === e.position.y);
     if (tileOccupied) continue;
     eVillage.woodStore -= HOUSE_WOOD_COST;
@@ -971,8 +998,7 @@ export function tick(state: WorldState): WorldState {
         // Non-goal action (rest, play, wander) — execute once
         if (action.type === 'play') {
           const playTarget = randomStepBiome(entity.position, gridSize, biomes);
-          const pv = getVillage(entity.tribe);
-          if (pv && isInVillage(playTarget, pv) && moveGrid[playTarget.y][playTarget.x] < 2) {
+          if (isNearTribeHouses(playTarget, entity.tribe, houses) && moveGrid[playTarget.y][playTarget.x] < 2) {
             moveGrid[entity.position.y][entity.position.x]--;
             moveGrid[playTarget.y][playTarget.x]++;
             entity = { ...entity, position: playTarget };
@@ -980,7 +1006,7 @@ export function tick(state: WorldState): WorldState {
           }
         } else if (action.type === 'wander') {
           const wTarget = randomStepBiome(entity.position, gridSize, biomes);
-          if (moveGrid[wTarget.y][wTarget.x] < 2 && canEnterTile(wTarget, entity.tribe, updatedVillages)) {
+          if (moveGrid[wTarget.y][wTarget.x] < 2) {
             moveGrid[entity.position.y][entity.position.x]--;
             moveGrid[wTarget.y][wTarget.x]++;
             entity = { ...entity, position: wTarget };
@@ -999,7 +1025,7 @@ export function tick(state: WorldState): WorldState {
       for (let step = 0; step < speed; step++) {
         if (entity.state !== 'idle' || !entity.goal?.target) break;
 
-        const moveTarget = stepToward(entity.position, entity.goal.target, biomes, gridSize, entity.tribe, updatedVillages);
+        const moveTarget = stepToward(entity.position, entity.goal.target, biomes, gridSize);
         if (!moveTarget || (moveTarget.x === entity.position.x && moveTarget.y === entity.position.y)) {
           // Can't move or already there — clear goal
           entity = { ...entity, goal: undefined };
@@ -1007,7 +1033,7 @@ export function tick(state: WorldState): WorldState {
           break;
         }
 
-        if (moveGrid[moveTarget.y][moveTarget.x] < 2 && canEnterTile(moveTarget, entity.tribe, updatedVillages)) {
+        if (moveGrid[moveTarget.y][moveTarget.x] < 2) {
           moveGrid[entity.position.y][entity.position.x]--;
           moveGrid[moveTarget.y][moveTarget.x]++;
           entity = { ...entity, position: moveTarget };
@@ -1103,14 +1129,17 @@ export function tick(state: WorldState): WorldState {
     if (e.gender !== 'male' || isChild(e)) continue;
     if (e.state !== 'idle') continue;
     const postBuildV = updatedVillages.find(v => v.tribe === e.tribe);
-    if (!postBuildV || !isInVillage(e.position, postBuildV)) continue;
-    if (postBuildV.woodStore < HOUSE_WOOD_COST) continue;
+    if (!postBuildV || postBuildV.woodStore < HOUSE_WOOD_COST) continue;
+    // Must be adjacent to an existing tribe house (or first house = anywhere)
+    const postTribeHouses = houses.filter(h => h.tribe === e.tribe);
+    if (postTribeHouses.length > 0 && !postTribeHouses.some(h => manhattan(e.position, h.position) === 1)) continue;
     const postTribeFemales = entities.filter(o => o.tribe === e.tribe && o.gender === 'female' && !isChild(o) && !o.homeId);
     const postFreeHouses = houses.filter(h => h.tribe === e.tribe && !h.occupantId);
     const postAlreadyBuilding = entities.some(o => o.tribe === e.tribe && o.state === 'building');
     if (postTribeFemales.length <= postFreeHouses.length && !postAlreadyBuilding) continue;
     if (postTribeFemales.length === 0) continue;
-    const postTileOccupied = houses.some(h => h.position.x === e.position.x && h.position.y === e.position.y)
+    if (isRoadTile(e.position, biomes)) continue;
+    const postTileOccupied = hasStructureAt(e.position, houses, updatedVillages)
       || entities.some(o => o.id !== e.id && o.state === 'building' && o.position.x === e.position.x && o.position.y === e.position.y);
     if (postTileOccupied) continue;
     postBuildV.woodStore -= HOUSE_WOOD_COST;
@@ -1135,7 +1164,7 @@ export function tick(state: WorldState): WorldState {
       const flee = Math.abs(dx) >= Math.abs(dy)
         ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
         : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
-      newPos = (isValidMove(flee, biomes, gridSize) && !getVillageAt(flee, updatedVillages))
+      newPos = isValidMove(flee, biomes, gridSize)
         ? flee : randomStepBiome(a.position, gridSize, biomes);
     } else {
       let nearestFood: Plant | undefined;
@@ -1150,7 +1179,6 @@ export function tick(state: WorldState): WorldState {
         ? stepToward(a.position, nearestFood.position, biomes, gridSize)
         : randomStepBiome(a.position, gridSize, biomes);
     }
-    if (getVillageAt(newPos, updatedVillages)) newPos = a.position;
     return { ...a, position: newPos, reproTimer: Math.max(0, a.reproTimer - 1) };
   });
 
@@ -1168,7 +1196,7 @@ export function tick(state: WorldState): WorldState {
     if (animals.length + fedBabyAnimals.length >= ANIMAL_MAX) continue;
 
     const spots = neighbors(a.position, gridSize).filter(
-      n => isPassable(biomes[n.y][n.x]) && !getVillageAt(n, updatedVillages)
+      n => isPassable(biomes[n.y][n.x])
     );
     if (spots.length === 0) continue;
 
@@ -1199,7 +1227,7 @@ export function tick(state: WorldState): WorldState {
         const px = key % gridSize;
         const py = Math.floor(key / gridSize);
         const ns = neighbors({ x: px, y: py }, gridSize).filter(
-          n => isPassable(biomes[n.y][n.x]) && !getVillageAt(n, updatedVillages)
+          n => isPassable(biomes[n.y][n.x])
         );
         if (ns.length === 0) continue;
         const spot = ns[Math.floor(Math.random() * ns.length)];
@@ -1246,7 +1274,6 @@ export function tick(state: WorldState): WorldState {
           const ny = parent.position.y + dy;
           if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) continue;
           if (biomes[ny][nx] !== 'forest') continue; // plants spread only in forest
-          if (getVillageAt({ x: nx, y: ny }, updatedVillages)) continue;
           const key = `${nx},${ny}`;
           if (occupied.has(key)) continue;
           plants.push({
@@ -1281,30 +1308,21 @@ export function tick(state: WorldState): WorldState {
 
   // Slow new plant spawns
   if (tickNum % PLANT_RESPAWN_INTERVAL === 0 && plants.length < PLANT_MAX) {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const pos = randomForestPos(biomes, gridSize);
-      if (!getVillageAt(pos, updatedVillages)) {
+    plants.push({
+      id: generateId('p'),
+      position: randomForestPos(biomes, gridSize),
+      portions: isWinter ? 0 : PLANT_PORTIONS,
+      maxPortions: PLANT_PORTIONS,
+    });
+    for (let b = 0; b < FOREST_PLANT_BONUS && plants.length < PLANT_MAX; b++) {
+      const p = randomPos(gridSize);
+      if (biomes[p.y][p.x] === 'forest') {
         plants.push({
           id: generateId('p'),
-          position: pos,
+          position: p,
           portions: isWinter ? 0 : PLANT_PORTIONS,
           maxPortions: PLANT_PORTIONS,
         });
-        break;
-      }
-    }
-    for (let b = 0; b < FOREST_PLANT_BONUS && plants.length < PLANT_MAX; b++) {
-      for (let attempt = 0; attempt < 20; attempt++) {
-        const p = randomPos(gridSize);
-        if (biomes[p.y][p.x] === 'forest' && !getVillageAt(p, updatedVillages)) {
-          plants.push({
-            id: generateId('p'),
-            position: p,
-            portions: isWinter ? 0 : PLANT_PORTIONS,
-            maxPortions: PLANT_PORTIONS,
-          });
-          break;
-        }
       }
     }
   }
@@ -1341,5 +1359,5 @@ export function tick(state: WorldState): WorldState {
   }
 
   const fullLog = [...state.log, ...log];
-  return { entities, animals, plants, houses, biomes, villages: updatedVillages, tick: tickNum, gridSize, log: fullLog };
+  return { entities, animals, plants, trees, houses, biomes, villages: updatedVillages, tick: tickNum, gridSize, log: fullLog };
 }

@@ -1,7 +1,9 @@
 import type { Entity, WorldState } from '../engine/types';
+import type { ReactNode } from 'react';
 import { CHILD_AGE } from '../engine/types';
 import { ageInYears } from '../engine/world';
 import { buildAIContext, getScores, decideAction } from '../engine/utility-ai';
+import { Axe, GenderFemale, GenderMale, Hammer, House, Leaf, PersonSimpleRun, ShieldWarning, Sword, Baby } from '@phosphor-icons/react';
 
 interface EntityPanelProps {
   entity: Entity;
@@ -24,8 +26,9 @@ export function EntityPanel({ entity, world, onClose }: EntityPanelProps) {
       </div>
       <div style={rowStyle}>
         <span style={dimStyle}>Sex:</span>
-        <span style={{ color: entity.gender === 'male' ? '#7aa2f7' : '#f7768e', fontWeight: 'bold' }}>
-          {entity.gender === 'male' ? '♂ Male' : '♀ Female'}
+        <span style={{ color: entity.gender === 'male' ? '#7aa2f7' : '#f7768e', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          {entity.gender === 'male' ? <GenderMale size={13} /> : <GenderFemale size={13} />}
+          {entity.gender === 'male' ? 'Male' : 'Female'}
         </span>
       </div>
       <div style={rowStyle}>
@@ -145,29 +148,29 @@ function Bar({ value, max, color }: { value: number; max: number; color: string 
   );
 }
 
-function stateLabel(entity: Entity): string {
+function stateLabel(entity: Entity): ReactNode {
   switch (entity.state) {
-    case 'pregnant': return `🤰 Pregnant (${entity.stateTimer}t)`;
-    case 'fighting': return '⚔ Fighting';
-    case 'training': return '⚔ Training';
-    case 'chopping': return '🪓 Chopping';
-    case 'building': return '🔨 Building';
-    case 'hunting': return '🏹 Hunting';
-    case 'gathering': return '🌿 Gathering';
+    case 'pregnant': return <span style={stateIconRowStyle}><Baby size={12} />Pregnant ({entity.stateTimer}t)</span>;
+    case 'fighting': return <span style={stateIconRowStyle}><Sword size={12} />Fighting</span>;
+    case 'training': return <span style={stateIconRowStyle}><ShieldWarning size={12} />Training</span>;
+    case 'chopping': return <span style={stateIconRowStyle}><Axe size={12} />Chopping</span>;
+    case 'building': return <span style={stateIconRowStyle}><Hammer size={12} />Building</span>;
+    case 'hunting': return <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Hunting</span>;
+    case 'gathering': return <span style={stateIconRowStyle}><Leaf size={12} />Gathering</span>;
     case 'idle': {
       const years = ageInYears(entity);
-      if (years < CHILD_AGE) return '👶 Child';
+      if (years < CHILD_AGE) return <span style={stateIconRowStyle}><Baby size={12} />Child</span>;
       if (entity.goal) {
-        const goalLabels: Record<string, string> = {
-          hunt: '🏹 Hunting',
-          gather: '🌿 Gathering',
-          chop: '🪓 Going to chop',
-          return_home: '🏠 Returning',
-          build: '🔨 Going to build',
+        const goalLabels: Record<string, React.ReactNode> = {
+          hunt: <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Hunting</span>,
+          gather: <span style={stateIconRowStyle}><Leaf size={12} />Gathering</span>,
+          chop: <span style={stateIconRowStyle}><Axe size={12} />Going to chop</span>,
+          return_home: <span style={stateIconRowStyle}><House size={12} />Returning</span>,
+          build: <span style={stateIconRowStyle}><Hammer size={12} />Going to build</span>,
         };
-        return goalLabels[entity.goal.type] ?? '🚶 Moving';
+        return goalLabels[entity.goal.type] ?? <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Moving</span>;
       }
-      return '🚶 Idle';
+      return <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Idle</span>;
     }
     default: return entity.state;
   }
@@ -207,4 +210,10 @@ const closeStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: '14px',
   padding: '2px 6px',
+};
+
+const stateIconRowStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
 };

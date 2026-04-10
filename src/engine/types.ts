@@ -23,10 +23,9 @@ export type TribeId = number; // 0/1/2 = starting tribes
 
 export interface Village {
   tribe: TribeId;
-  center: Position;
-  radius: number;
   color: RGB;
   name: string;
+  stockpile?: Position;
   // Pantry (food)
   meatStore: number;
   plantStore: number;
@@ -100,7 +99,17 @@ export const PLANT_PORTIONS_PER_GATHER = 10; // portions moved to pantry per suc
 export const PLANT_SEASON_REGROW = true;  // regrow in summer
 export const PLANT_SPRING_FRUIT_CHANCE = 0.4;
 
-export const FOREST_REGROW_TIME = 7200; // ~3 years for chopped forest to regrow
+export interface Tree {
+  id: string;
+  position: Position;
+  chopped: boolean;     // true = stump, will regrow
+  choppedAt?: number;   // tick when chopped
+  fruiting: boolean;    // true = fruit tree (can bear fruit)
+  hasFruit: boolean;    // true = fruit ready to pick
+}
+
+export const TREE_REGROW_TICKS = 7200; // ~3 years for chopped tree to regrow
+export const FOREST_REGROW_TIME = 7200; // legacy alias
 export const FIGHT_MIN_AGE = 16;
 export const CHOPPING_DURATION = 5;  // half day
 export const BUILDING_DURATION = 20; // 2 days
@@ -157,7 +166,7 @@ export const PLANT_MAX = 300;
 export const PLANT_RESPAWN_INTERVAL = 100; // new plant every ~5 days
 
 // Biomes
-export type Biome = 'plains' | 'forest' | 'mountain' | 'water';
+export type Biome = 'plains' | 'forest' | 'mountain' | 'water' | 'road';
 
 export interface BiomeGrid {
   grid: Biome[][];
@@ -178,12 +187,13 @@ export interface LogEntry {
 export const FOREST_PLANT_BONUS = 1; // extra plant spawns in forest per interval
 export const FOREST_SPEED_PENALTY = 1; // reduce steps by this in forest
 
-export const VILLAGE_RADIUS = 3;
+export const NEAR_HOME_RANGE = 2; // manhattan distance to consider "near settlement"
 
 export interface WorldState {
   entities: Entity[];
   animals: Animal[];
   plants: Plant[];
+  trees: Tree[];
   houses: House[];
   biomes: Biome[][];
   villages: Village[];

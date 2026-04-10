@@ -10,6 +10,7 @@ import {
   PLANT_RESERVE_MIN,
   TICKS_PER_DAY,
   DAY_TICKS,
+  NEAR_HOME_RANGE,
 } from './types';
 import { ageInYears } from './world';
 
@@ -21,15 +22,15 @@ export type AIAction =
   | { type: 'go_hunt'; target: Position }
   | { type: 'return_home' }
   | { type: 'go_gather'; target: Position }
-  | { type: 'leave_village' }   // walk toward edge to exit
   | { type: 'wander' }
-  | { type: 'play' };           // random step within village (children)
+  | { type: 'play' };           // random step near houses
 
 // --- Context for scoring ---
 export interface AIContext {
   entity: Entity;
   village?: Village;
-  inVillage: boolean;
+  nearHome: boolean;
+  homeTarget?: Position;
   isNight: boolean;
   nearestAnimal?: { pos: Position; dist: number };
   nearestPlant?: { pos: Position; dist: number };
@@ -74,11 +75,11 @@ function survivalForageAction(ctx: AIContext, survivalScore: number): AIAction |
     if (ctx.nearestForest) return { type: 'go_gather', target: ctx.nearestForest.pos };
   }
 
-  if (!ctx.inVillage && ctx.village && totalVillageFood(ctx) > 0) {
+  if (!ctx.nearHome && ctx.village && totalVillageFood(ctx) > 0) {
     return { type: 'return_home' };
   }
 
-  if (!ctx.inVillage) return { type: 'wander' };
+  if (!ctx.nearHome) return { type: 'wander' };
   return undefined;
 }
 
@@ -134,7 +135,7 @@ function scoreGather(ctx: AIContext): number {
 }
 
 function scoreReturnHome(ctx: AIContext): number {
-  if (!ctx.village || ctx.inVillage) return 0;
+  if (!ctx.homeTarget || ctx.nearHome) return 0;
   return 0.4;
 }
 
@@ -155,21 +156,21 @@ export function getScores(ctx: AIContext): Record<string, number> {
 export function decideAction(ctx: AIContext): AIAction {
   const e = ctx.entity;
 
-  // Children: return if outside village, wander inside village
+  // Children: return if far from home, play near houses
   if (ageInYears(e) < CHILD_AGE) {
-    if (!ctx.inVillage && ctx.village) return { type: 'return_home' };
-    return { type: 'play' }; // run around in village
+    if (!ctx.nearHome && ctx.homeTarget) return { type: 'return_home' };
+    return { type: 'play' };
   }
 
   const survScore = scoreSurvival(ctx);
   const survivalAction = survivalForageAction(ctx, survScore);
 
-  // Night: everyone returns home, in village = rest. Hungry adults can still forage.
+  // Night: everyone returns home, near home = rest. Hungry adults can still forage.
   if (ctx.isNight) {
     if (survivalAction) return survivalAction;
     const isAdultMale = e.gender === 'male' && ageInYears(e) >= CHILD_AGE;
     const canNightHunt = !!ctx.village
-      && !ctx.inVillage
+      && !ctx.nearHome
       && isAdultMale
       && e.energy >= NIGHT_HUNT_MIN_ENERGY
       && ctx.village.meatStore < NIGHT_HUNT_MEAT_THRESHOLD;
@@ -177,7 +178,7 @@ export function decideAction(ctx: AIContext): AIAction {
       if (ctx.nearestAnimal) return { type: 'go_hunt', target: ctx.nearestAnimal.pos };
       return { type: 'wander' };
     }
-    if (!ctx.inVillage && ctx.village) return { type: 'return_home' };
+    if (!ctx.nearHome && ctx.homeTarget) return { type: 'return_home' };
     return { type: 'rest' };
   }
 
@@ -189,65 +190,56 @@ export function decideAction(ctx: AIContext): AIAction {
     scores.push({ score: survScore, action: () => survivalAction });
   }
 
-  // Build home
+  // Build home — go near houses first, then play to find build spot
   const buildScore = scoreBuildHome(ctx);
   if (buildScore > 0) {
-    if (!ctx.inVillage) {
+    if (!ctx.nearHome) {
       scores.push({ score: buildScore, action: () => ({ type: 'return_home' }) });
     } else {
-      // In village, will be detected as 'building' by tick logic
-      scores.push({ score: buildScore, action: () => ({ type: 'rest' }) });
+      scores.push({ score: buildScore, action: () => ({ type: 'play' }) });
     }
   }
 
-  // Hunt
+  // Hunt — go directly to target
   const huntScore = scoreHunt(ctx);
   if (huntScore > 0) {
-    if (ctx.inVillage) {
-      scores.push({ score: huntScore, action: () => ({ type: 'leave_village' }) });
-    } else if (ctx.nearestAnimal) {
+    if (ctx.nearestAnimal) {
       scores.push({ score: huntScore, action: () => ({ type: 'go_hunt', target: ctx.nearestAnimal!.pos }) });
     } else {
-      // No prey in sight outside village — search local area instead of only pushing farther out
       scores.push({ score: huntScore * 0.8, action: () => ({ type: 'wander' }) });
     }
   }
 
-  // Gather
+  // Gather — go directly to target
   const gatherScore = scoreGather(ctx);
   if (gatherScore > 0) {
-    if (ctx.inVillage) {
-      scores.push({ score: gatherScore, action: () => ({ type: 'leave_village' }) });
-    } else if (ctx.nearestPlant) {
+    if (ctx.nearestPlant) {
       scores.push({ score: gatherScore, action: () => ({ type: 'go_gather', target: ctx.nearestPlant!.pos }) });
     } else if (ctx.nearestForest) {
       scores.push({ score: gatherScore * 0.9, action: () => ({ type: 'go_gather', target: ctx.nearestForest!.pos }) });
     } else {
-      // No plants or forest in sight outside village — search nearby area instead of drifting away forever.
       scores.push({ score: gatherScore * 0.8, action: () => ({ type: 'wander' }) });
     }
   }
 
-  // Chop firewood
+  // Chop firewood — go directly to forest
   const firewoodScore = scoreChopFirewood(ctx);
   if (firewoodScore > 0) {
-    if (ctx.inVillage) {
-      scores.push({ score: firewoodScore, action: () => ({ type: 'leave_village' }) });
-    } else if (ctx.nearestForest) {
+    if (ctx.nearestForest) {
       scores.push({ score: firewoodScore, action: () => ({ type: 'go_chop', target: ctx.nearestForest!.pos }) });
     } else {
-      scores.push({ score: firewoodScore * 0.8, action: () => ({ type: 'leave_village' }) });
+      scores.push({ score: firewoodScore * 0.8, action: () => ({ type: 'wander' }) });
     }
   }
 
-  // Return home (low priority default for outside entities)
+  // Return home (low priority default for distant entities)
   const returnScore = scoreReturnHome(ctx);
   if (returnScore > 0) {
     scores.push({ score: returnScore, action: () => ({ type: 'return_home' }) });
   }
 
-  // Default: stroll around village
-  if (ctx.inVillage) {
+  // Default: stroll around settlement
+  if (ctx.nearHome) {
     scores.push({ score: 0.02, action: () => ({ type: 'play' }) });
   }
 
@@ -261,6 +253,10 @@ export function decideAction(ctx: AIContext): AIAction {
 
 // --- Build context from world state ---
 
+function manhattan(a: Position, b: Position): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
 export function buildAIContext(
   entity: Entity,
   villages: Village[],
@@ -273,9 +269,26 @@ export function buildAIContext(
   houses: House[] = [],
 ): AIContext {
   const village = villages.find(v => v.tribe === entity.tribe);
-  const inVillage = !!village && (
-    Math.abs(entity.position.x - village.center.x) + Math.abs(entity.position.y - village.center.y) <= village.radius
+
+  // nearHome: within NEAR_HOME_RANGE of any tribe house
+  const tribeHouses = houses.filter(h => h.tribe === entity.tribe);
+  const nearHome = tribeHouses.some(h =>
+    manhattan(entity.position, h.position) <= NEAR_HOME_RANGE
   );
+
+  // homeTarget: own house or nearest tribe house
+  let homeTarget: Position | undefined;
+  if (entity.homeId) {
+    const home = houses.find(h => h.id === entity.homeId);
+    if (home) homeTarget = home.position;
+  }
+  if (!homeTarget && tribeHouses.length > 0) {
+    let bestDist = Infinity;
+    for (const h of tribeHouses) {
+      const d = manhattan(entity.position, h.position);
+      if (d < bestDist) { bestDist = d; homeTarget = h.position; }
+    }
+  }
 
   const sense = Math.floor(3 + entity.traits.perception * 2);
 
@@ -329,7 +342,8 @@ export function buildAIContext(
   return {
     entity,
     village,
-    inVillage,
+    nearHome,
+    homeTarget,
     isNight,
     nearestAnimal,
     nearestPlant,
@@ -345,18 +359,7 @@ export function actionToGoal(action: AIAction, ctx: AIContext): EntityGoal | und
     case 'go_hunt': return { type: 'hunt', target: action.target };
     case 'go_gather': return { type: 'gather', target: action.target };
     case 'go_chop': return { type: 'chop', target: action.target };
-    case 'return_home': return { type: 'return_home', target: ctx.village?.center };
-    case 'leave_village': {
-      // Pick a point outside village to walk toward
-      if (!ctx.village) return undefined;
-      const vc = ctx.village.center;
-      const dx = ctx.entity.position.x - vc.x;
-      const dy = ctx.entity.position.y - vc.y;
-      // Push outward from village center
-      const tx = vc.x + (dx || 1) * 3;
-      const ty = vc.y + (dy || 1) * 3;
-      return { type: 'hunt', target: { x: tx, y: ty } };
-    }
+    case 'return_home': return ctx.homeTarget ? { type: 'return_home', target: ctx.homeTarget } : undefined;
     default: return undefined;
   }
 }

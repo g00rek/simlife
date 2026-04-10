@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { createWorld } from '../engine/world';
 import { GridCanvas } from './GridCanvas';
 import { Stats } from './Stats';
@@ -9,8 +10,27 @@ import { PopGraph } from './PopGraph';
 import { EventLog } from './EventLog';
 import type { WorldState, Position } from '../engine/types';
 import { TICKS_PER_YEAR } from '../engine/types';
+import { BowlFood, Leaf, Axe } from '@phosphor-icons/react';
 
-const WORLD_GRID_SIZE = 20;
+import { DEFAULT_BIOME_PARAMS } from '../engine/biomes';
+import type { BiomeGenParams } from '../engine/biomes';
+
+function loadMapParams(): { gridSize: number; params: BiomeGenParams } {
+  try {
+    const raw = localStorage.getItem('neurofolk-map-params');
+    if (raw) {
+      const saved = JSON.parse(raw);
+      return {
+        gridSize: saved.gridSize ?? 30,
+        params: { ...DEFAULT_BIOME_PARAMS, ...saved.params },
+      };
+    }
+  } catch { /* ignore */ }
+  return { gridSize: 30, params: { ...DEFAULT_BIOME_PARAMS } };
+}
+
+const MAP_SETTINGS = loadMapParams();
+const WORLD_GRID_SIZE = MAP_SETTINGS.gridSize;
 const INITIAL_ENTITY_COUNT = 4;
 const VILLAGE_COUNT = 1;
 const INITIAL_SPEED = 300;
@@ -41,6 +61,7 @@ export function App() {
       gridSize: WORLD_GRID_SIZE,
       entityCount: INITIAL_ENTITY_COUNT,
       villageCount: VILLAGE_COUNT,
+      biomeParams: MAP_SETTINGS.params,
     });
   }
 
@@ -162,6 +183,7 @@ export function App() {
       gridSize: WORLD_GRID_SIZE,
       entityCount: INITIAL_ENTITY_COUNT,
       villageCount: VILLAGE_COUNT,
+      biomeParams: MAP_SETTINGS.params,
     });
     setWorld(nextWorld);
     setRunning(false);
@@ -178,7 +200,7 @@ export function App() {
 
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <h1 style={{ margin: 0, fontSize: '18px', color: '#ccc' }}>Evoliso</h1>
+      <h1 style={{ margin: 0, fontSize: '18px', color: '#ccc' }}>Neurofolk</h1>
       <Controls
         running={running}
         speed={speed}
@@ -197,9 +219,9 @@ export function App() {
 
   const resources = v ? (
     <div style={resourceBarStyle}>
-      <ResourceBar emoji={'\uD83C\uDF56'} color="#8d6e63" pct={meatPct} val={v.meatStore} />
-      <ResourceBar emoji={'\uD83C\uDF3F'} color="#4caf50" pct={plantPct} val={v.plantStore} />
-      <ResourceBar emoji={'\uD83E\uDEB5'} color="#a08050" pct={woodPct} val={v.woodStore} />
+      <ResourceBar icon={<BowlFood size={12} weight="duotone" />} color="#8d6e63" pct={meatPct} val={v.meatStore} />
+      <ResourceBar icon={<Leaf size={12} weight="duotone" />} color="#4caf50" pct={plantPct} val={v.plantStore} />
+      <ResourceBar icon={<Axe size={12} weight="duotone" />} color="#a08050" pct={woodPct} val={v.woodStore} />
     </div>
   ) : null;
 
@@ -276,10 +298,10 @@ export function App() {
   );
 }
 
-function ResourceBar({ emoji, color, pct, val }: { emoji: string; color: string; pct: number; val: number }) {
+function ResourceBar({ icon, color, pct, val }: { icon: ReactNode; color: string; pct: number; val: number }) {
   return (
     <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flex: 1 }}>
-      <span style={{ fontSize: '11px', color }}>{emoji}</span>
+      <span style={{ display: 'inline-flex', color }}>{icon}</span>
       <div style={{ flex: 1, height: '6px', background: '#333', borderRadius: '3px' }}>
         <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: '3px' }} />
       </div>

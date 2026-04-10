@@ -1,17 +1,35 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import type { WorldState, Entity, Village } from '../engine/types';
-import { CHILD_AGE } from '../engine/types';
+import { CHILD_AGE, TICKS_PER_DAY, TICKS_PER_YEAR } from '../engine/types';
 import { ageInYears } from '../engine/world';
+import { drawSurfaceLayer, drawWaterLayer, drawTreeLayer } from './terrain/renderer';
+import type { Season } from './terrain/renderer';
 
 const GRID_BG = '#1a1b26';
 const GRID_LINE = '#2a2b36';
+const MINI_MEDIEVAL_BASE = '/assets/mini-medieval/Mini-Medieval-8x8';
+const UNITS_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Units.png`;
+const STRUCTURES_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Structures.png`;
+const MISC_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Misc.png`;
+const OVERWORLD_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Overworld.png`;
+const ANIMALS_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Animals.png`;
 
 interface GridCanvasProps {
   world: WorldState;
   size: number;
   selectedId: string | null;
+  selectedTile?: { x: number; y: number } | null;
   onClick: (gridX: number, gridY: number) => void;
 }
+
+interface SpriteAssets {
+  units: HTMLImageElement;
+  structures: HTMLImageElement;
+  misc: HTMLImageElement;
+  overworld: HTMLImageElement;
+  animals: HTMLImageElement;
+}
+
 
 const TRIBE_COLORS: Record<number, [number, number, number]> = {
   0: [220, 60, 60],   // Red
@@ -19,6 +37,17 @@ const TRIBE_COLORS: Record<number, [number, number, number]> = {
   2: [60, 180, 60],   // Green
   [-1]: [180, 140, 60], // Ronin
 };
+
+const PLAINS_TILES: Array<{ sx: number; sy: number }> = [
+  { sx: 0, sy: 0 },
+  { sx: 8, sy: 0 },
+  { sx: 16, sy: 0 },
+  { sx: 24, sy: 0 },
+  { sx: 0, sy: 8 },
+  { sx: 8, sy: 8 },
+  { sx: 16, sy: 8 },
+  { sx: 24, sy: 8 },
+];
 
 function entityColor(entity: Entity, villages: Village[]): string {
   const base = TRIBE_COLORS[entity.tribe]
@@ -40,45 +69,347 @@ function drawPerson(
   cx: number, cy: number,
   cellSize: number,
   gender: string,
-  color: string,
   isChild: boolean,
 ) {
-  const scale = isChild ? 0.22 : 0.38;
-  const s = cellSize * scale;
-  const headR = s * 0.3;
-  const headY = cy - s * (isChild ? 0.15 : 0.35);
+  const emoji = isChild ? '🧒' : (gender === 'male' ? '🧍‍♂️' : '🧍‍♀️');
+  const by = cy + cellSize * 0.02;
 
-  ctx.beginPath();
-  ctx.arc(cx, headY, headR, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.fill();
-
-  ctx.beginPath();
-  if (isChild) {
-    // Small round body for children
-    const br = s * 0.35;
-    ctx.arc(cx, headY + headR + br * 0.8, br, 0, Math.PI * 2);
-  } else if (gender === 'male') {
-    const bw = s * 0.5;
-    const bh = s * 0.55;
-    const by = headY + headR + s * 0.04;
-    ctx.rect(cx - bw / 2, by, bw, bh);
-  } else {
-    const tw = s * 0.6;
-    const th = s * 0.6;
-    const ty = headY + headR + s * 0.04;
-    ctx.moveTo(cx, ty);
-    ctx.lineTo(cx - tw / 2, ty + th);
-    ctx.lineTo(cx + tw / 2, ty + th);
-    ctx.closePath();
-  }
-  ctx.fillStyle = color;
-  ctx.fill();
+  // Person icon with shadow and outline-like stroke for contrast
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.max(12, Math.floor(cellSize * 0.9))}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = Math.max(1, cellSize * 0.08);
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 1;
+  ctx.lineWidth = Math.max(1.2, cellSize * 0.05);
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.strokeText(emoji, cx, by);
+  ctx.fillText(emoji, cx, by);
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
 }
 
-export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps) {
+function drawPersonSprite(
+  ctx: CanvasRenderingContext2D,
+  sprites: SpriteAssets,
+  cx: number,
+  cy: number,
+  cellSize: number,
+  gender: string,
+  tribe: number,
+  isChild: boolean,
+  tileX: number,
+  tileY: number,
+) {
+  const maleFrames = [{ sx: 0, sy: 32 }, { sx: 0, sy: 64 }, { sx: 0, sy: 56 }];
+  const femaleFrames = [{ sx: 0, sy: 96 }, { sx: 0, sy: 128 }, { sx: 8, sy: 120 }];
+  const frame = gender === 'male'
+    ? maleFrames[Math.max(0, Math.min(2, tribe))]
+    : femaleFrames[Math.max(0, Math.min(2, tribe))];
+  const srcSize = 8;
+  const renderScale = isChild ? 0.68 : 0.82;
+  const dstSize = Math.max(8, cellSize * renderScale);
+  const rawDx = cx - dstSize / 2;
+  const rawDy = cy - dstSize / 2;
+  const tileLeft = tileX * cellSize;
+  const tileTop = tileY * cellSize;
+  const minDx = tileLeft;
+  const maxDx = tileLeft + cellSize - dstSize;
+  const minDy = tileTop;
+  const maxDy = tileTop + cellSize - dstSize;
+  const dx = Math.max(minDx, Math.min(maxDx, rawDx));
+  const dy = Math.max(minDy, Math.min(maxDy, rawDy));
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + cellSize * 0.34, dstSize * 0.2, dstSize * 0.1, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.26)';
+  ctx.fill();
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sprites.units, frame.sx, frame.sy, srcSize, srcSize, dx, dy, dstSize, dstSize);
+}
+
+function drawHouse(ctx: CanvasRenderingContext2D, x: number, y: number, cellSize: number, color: [number, number, number]) {
+  const [r, g, b] = color;
+  const baseX = x + cellSize * 0.14;
+  const baseY = y + cellSize * 0.35;
+  const baseW = cellSize * 0.72;
+  const baseH = cellSize * 0.5;
+
+  ctx.fillStyle = `rgba(${r},${g},${b},0.2)`;
+  ctx.fillRect(baseX, baseY, baseW, baseH);
+  ctx.strokeStyle = `rgb(${r},${g},${b})`;
+  ctx.lineWidth = Math.max(1, cellSize * 0.05);
+  ctx.strokeRect(baseX, baseY, baseW, baseH);
+
+  // roof
+  ctx.beginPath();
+  ctx.moveTo(x + cellSize * 0.08, y + cellSize * 0.36);
+  ctx.lineTo(x + cellSize * 0.5, y + cellSize * 0.1);
+  ctx.lineTo(x + cellSize * 0.92, y + cellSize * 0.36);
+  ctx.closePath();
+  ctx.fillStyle = `rgba(${r},${g},${b},0.6)`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(${r},${g},${b},0.95)`;
+  ctx.stroke();
+
+  // door
+  ctx.fillStyle = 'rgba(44,32,24,0.95)';
+  ctx.fillRect(x + cellSize * 0.45, y + cellSize * 0.58, cellSize * 0.12, cellSize * 0.27);
+}
+
+function drawHouseSprite(
+  ctx: CanvasRenderingContext2D,
+  sprites: SpriteAssets,
+  x: number,
+  y: number,
+  cellSize: number,
+  tribe: number,
+) {
+  const rowByTribe = [80, 48, 0];
+  const srcX = 0;
+  const srcY = rowByTribe[Math.max(0, Math.min(2, tribe))];
+  const srcW = 32;
+  const srcH = 40;
+  // Keep strict 1 tile footprint and make houses visually smaller than full cell.
+  const containScale = Math.min(cellSize / srcW, cellSize / srcH) * 0.62;
+  const dstW = srcW * containScale;
+  const dstH = srcH * containScale;
+  const dx = Math.round(x + (cellSize - dstW) / 2);
+  const dy = Math.round(y + cellSize - dstH - cellSize * 0.04);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sprites.structures, srcX, srcY, srcW, srcH, dx, dy, Math.round(dstW), Math.round(dstH));
+}
+
+function drawStockpile(ctx: CanvasRenderingContext2D, x: number, y: number, cellSize: number, color: [number, number, number]) {
+  const [r, g, b] = color;
+  ctx.fillStyle = `rgba(${r},${g},${b},0.18)`;
+  ctx.fillRect(x + cellSize * 0.08, y + cellSize * 0.08, cellSize * 0.84, cellSize * 0.84);
+  ctx.strokeStyle = `rgb(${r},${g},${b})`;
+  ctx.lineWidth = Math.max(1.2, cellSize * 0.05);
+  ctx.strokeRect(x + cellSize * 0.08, y + cellSize * 0.08, cellSize * 0.84, cellSize * 0.84);
+
+  // stacked crates
+  const crates = [
+    { ox: 0.2, oy: 0.52, s: 0.22 },
+    { ox: 0.46, oy: 0.48, s: 0.24 },
+    { ox: 0.33, oy: 0.28, s: 0.2 },
+  ];
+  for (const c of crates) {
+    const cx = x + cellSize * c.ox;
+    const cy = y + cellSize * c.oy;
+    const s = cellSize * c.s;
+    ctx.fillStyle = '#b08a57';
+    ctx.fillRect(cx, cy, s, s);
+    ctx.strokeStyle = '#61452a';
+    ctx.lineWidth = Math.max(0.7, cellSize * 0.03);
+    ctx.strokeRect(cx, cy, s, s);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + s, cy + s);
+    ctx.moveTo(cx + s, cy);
+    ctx.lineTo(cx, cy + s);
+    ctx.stroke();
+  }
+}
+
+function drawStockpileSprite(
+  ctx: CanvasRenderingContext2D,
+  sprites: SpriteAssets,
+  x: number,
+  y: number,
+  cellSize: number,
+  _color: [number, number, number],
+  tick: number,
+) {
+  // Campfire: 2 tiles tall (top + bottom), 8 animation frames
+  // Top: Structures.png|(72 + frame*8), 504, 8, 8
+  // Bottom: Structures.png|(72 + frame*8), 512, 8, 8
+  const frame = Math.floor(tick / 8) % 8;
+  const srcX = 72 + frame * 8;
+  const dstW = cellSize;
+  const dstH = cellSize;
+
+  ctx.imageSmoothingEnabled = false;
+  // Bottom half (base of fire) at cell position
+  ctx.drawImage(sprites.structures, srcX, 512, 8, 8, Math.round(x), Math.round(y), Math.round(dstW), Math.round(dstH));
+  // Top half (flames) above the cell
+  ctx.drawImage(sprites.structures, srcX, 504, 8, 8, Math.round(x), Math.round(y - dstH), Math.round(dstW), Math.round(dstH));
+}
+
+function drawPlant(ctx: CanvasRenderingContext2D, cx: number, cy: number, cellSize: number, hasFruit: boolean) {
+  const stemH = cellSize * 0.2;
+  ctx.strokeStyle = '#2e7d32';
+  ctx.lineWidth = Math.max(1, cellSize * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + cellSize * 0.22);
+  ctx.lineTo(cx, cy + cellSize * 0.22 - stemH);
+  ctx.stroke();
+
+  ctx.fillStyle = hasFruit ? '#4caf50' : '#3a8f46';
+  ctx.beginPath();
+  ctx.arc(cx, cy + cellSize * 0.08, cellSize * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (hasFruit) {
+    ctx.fillStyle = '#e64545';
+    ctx.beginPath();
+    ctx.arc(cx - cellSize * 0.09, cy + cellSize * 0.08, cellSize * 0.05, 0, Math.PI * 2);
+    ctx.arc(cx + cellSize * 0.1, cy + cellSize * 0.05, cellSize * 0.045, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawPlantSprite(
+  ctx: CanvasRenderingContext2D,
+  sprites: SpriteAssets,
+  cx: number,
+  cy: number,
+  cellSize: number,
+  season: Season,
+  hasFruit: boolean,
+) {
+  const frameBySeason: Record<Season, { sx: number; sy: number }> = {
+    winter: { sx: 0, sy: 736 },
+    spring: { sx: 48, sy: 736 },
+    summer: { sx: 48, sy: 736 },
+    autumn: { sx: 144, sy: 736 },
+  };
+  const fruitFrame = { sx: 96, sy: 736 };
+  const frame = hasFruit ? fruitFrame : frameBySeason[season];
+  const srcW = 8;
+  const srcH = 8;
+  const dstW = cellSize * 0.92;
+  const dstH = cellSize * 0.92;
+  const dx = Math.round(cx - dstW / 2);
+  const dy = Math.round(cy - dstH / 2);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sprites.overworld, frame.sx, frame.sy, srcW, srcH, dx, dy, Math.round(dstW), Math.round(dstH));
+}
+
+function drawRoadTileSprite(
+  ctx: CanvasRenderingContext2D,
+  sprites: SpriteAssets,
+  x: number,
+  y: number,
+  cellSize: number,
+) {
+  const srcX = 32;
+  const srcY = 320;
+  const srcW = 8;
+  const srcH = 8;
+  const dstW = cellSize;
+  const dstH = cellSize;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sprites.overworld, srcX, srcY, srcW, srcH, x, y, Math.round(dstW), Math.round(dstH));
+}
+
+function tileNoise01(x: number, y: number, salt: number): number {
+  // Fast deterministic hash in [0,1) for stable tile variation.
+  let h = (x * 374761393 + y * 668265263 + salt * 982451653) | 0;
+  h = (h ^ (h >>> 13)) * 1274126177;
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+function pickPlainsTile(x: number, y: number): { sx: number; sy: number } {
+  const r = tileNoise01(x, y, 1);
+  // Keep mostly base grass, sprinkle variants for visual richness.
+  if (r < 0.93) return PLAINS_TILES[0];
+  const idx = 1 + Math.floor(tileNoise01(x, y, 2) * 7);
+  return PLAINS_TILES[Math.max(1, Math.min(7, idx))];
+}
+
+function drawPlainsTileSprite(
+  ctx: CanvasRenderingContext2D,
+  sprites: SpriteAssets,
+  tileX: number,
+  tileY: number,
+  x: number,
+  y: number,
+  cellSize: number,
+) {
+  const { sx, sy } = pickPlainsTile(tileX, tileY);
+  const srcW = 8;
+  const srcH = 8;
+  const dstW = cellSize;
+  const dstH = cellSize;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sprites.overworld, sx, sy, srcW, srcH, x, y, Math.round(dstW), Math.round(dstH));
+}
+
+function drawAnimal(ctx: CanvasRenderingContext2D, cx: number, cy: number, cellSize: number) {
+  const bodyW = cellSize * 0.34;
+  const bodyH = cellSize * 0.2;
+  ctx.fillStyle = '#8d6e63';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + cellSize * 0.2, bodyW, bodyH, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#5d4037';
+  ctx.lineWidth = Math.max(0.8, cellSize * 0.03);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx + bodyW * 0.65, cy + cellSize * 0.15, cellSize * 0.08, 0, Math.PI * 2);
+  ctx.fillStyle = '#8d6e63';
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawAnimalSprite(
+  ctx: CanvasRenderingContext2D,
+  sprites: SpriteAssets,
+  cx: number,
+  cy: number,
+  cellSize: number,
+) {
+  const srcX = 0;
+  const srcY = 472;
+  const srcW = 8;
+  const srcH = 8;
+  const dstW = cellSize * 0.86;
+  const dstH = cellSize * 0.86;
+  const dx = Math.round(cx - dstW / 2);
+  const dy = Math.round(cy - dstH / 2);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sprites.animals, srcX, srcY, srcW, srcH, dx, dy, Math.round(dstW), Math.round(dstH));
+}
+
+type ActionBadge = 'fight' | 'train' | 'hunt' | 'gather' | 'chop' | 'build';
+
+function drawActionBadge(ctx: CanvasRenderingContext2D, cx: number, cy: number, cellSize: number, kind: ActionBadge) {
+  const palette: Record<ActionBadge, { bg: string; fg: string; label: string }> = {
+    fight: { bg: '#b83b5e', fg: '#fff', label: 'F' },
+    train: { bg: '#4e6bb8', fg: '#fff', label: 'T' },
+    hunt: { bg: '#8d6e63', fg: '#fff', label: 'H' },
+    gather: { bg: '#3e8f4e', fg: '#fff', label: 'G' },
+    chop: { bg: '#a0733d', fg: '#fff', label: 'C' },
+    build: { bg: '#7a5ec9', fg: '#fff', label: 'B' },
+  };
+  const p = palette[kind];
+  const r = Math.max(5, cellSize * 0.17);
+  const by = cy - cellSize * 0.42;
+  ctx.beginPath();
+  ctx.arc(cx, by, r, 0, Math.PI * 2);
+  ctx.fillStyle = p.bg;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+  ctx.lineWidth = Math.max(0.8, cellSize * 0.03);
+  ctx.stroke();
+  ctx.fillStyle = p.fg;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.max(8, Math.floor(cellSize * 0.24))}px system-ui`;
+  ctx.fillText(p.label, cx, by + 0.5);
+}
+
+export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: GridCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const backgroundCacheRef = useRef<{ key: string; canvas: HTMLCanvasElement } | null>(null);
+  const spritesRef = useRef<SpriteAssets | null>(null);
+  const [, setSpritesVersion] = useState(0);
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -91,78 +422,90 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
   };
 
   useEffect(() => {
+    let cancelled = false;
+    const units = new Image();
+    const structures = new Image();
+    const misc = new Image();
+    const overworld = new Image();
+    const animals = new Image();
+    let loaded = 0;
+    const done = () => {
+      loaded++;
+      if (loaded < 5 || cancelled) return;
+      spritesRef.current = { units, structures, misc, overworld, animals };
+      setSpritesVersion(v => v + 1);
+    };
+    units.onload = done;
+    structures.onload = done;
+    misc.onload = done;
+    overworld.onload = done;
+    animals.onload = done;
+    units.onerror = done;
+    structures.onerror = done;
+    misc.onerror = done;
+    overworld.onerror = done;
+    animals.onerror = done;
+    units.src = UNITS_SHEET_URL;
+    structures.src = STRUCTURES_SHEET_URL;
+    misc.src = MISC_SHEET_URL;
+    overworld.src = OVERWORLD_SHEET_URL;
+    animals.src = ANIMALS_SHEET_URL;
+    return () => { cancelled = true; };
+  }, []);
+
+  // Animation tick — increments every ~500ms to drive water/fire animations
+  const [animTick, setAnimTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setAnimTick(t => t + 1), 100);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.floor(size * dpr));
+    canvas.height = Math.max(1, Math.floor(size * dpr));
+    canvas.style.width = `${size}px`;
+    canvas.style.height = `${size}px`;
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const cellSize = size / world.gridSize;
+    const ticksPerMonth = TICKS_PER_DAY * 10;
+    const month = Math.floor((world.tick % TICKS_PER_YEAR) / ticksPerMonth);
+    const seasonIdx = Math.floor(month / 3);
+    const season: Season = seasonIdx === 0 ? 'spring' : seasonIdx === 1 ? 'summer' : seasonIdx === 2 ? 'autumn' : 'winter';
+    const terrainSpritesReady = !!spritesRef.current?.overworld;
     const backgroundKey = [
       size,
+      dpr,
       world.gridSize,
       world.biomes.map(row => row.join('')).join(''),
-      world.villages.map(v => `${v.tribe}:${v.center.x},${v.center.y},${v.radius}:${v.color.join(',')}`).join('|'),
+      world.villages.map(v => `${v.tribe}:${v.color.join(',')}`).join('|'),
+      terrainSpritesReady ? 'terrainSprites:1' : 'terrainSprites:0',
     ].join('|');
 
     if (backgroundCacheRef.current?.key !== backgroundKey) {
       const background = document.createElement('canvas');
-      background.width = size;
-      background.height = size;
+      background.width = Math.max(1, Math.floor(size * dpr));
+      background.height = Math.max(1, Math.floor(size * dpr));
       const bg = background.getContext('2d');
       if (!bg) return;
+      bg.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const biomeColors: Record<string, string> = {
-        plains: '#2a2a1e',
-        forest: '#1a2e1a',
-        mountain: '#3a3a3a',
-        water: '#1a2a3e',
-      };
+      // Surface layer (biome background colors) via shared renderer
+      drawSurfaceLayer(bg, world.biomes, world.gridSize, cellSize, spritesRef.current?.overworld);
 
-      for (let y = 0; y < world.gridSize; y++) {
-        for (let x = 0; x < world.gridSize; x++) {
-          const biome = world.biomes[y][x];
-          bg.fillStyle = biomeColors[biome] || GRID_BG;
-          bg.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-        }
-      }
-
-      if (cellSize >= 4) {
-        bg.beginPath();
-        bg.strokeStyle = GRID_LINE;
-        bg.lineWidth = 0.3;
-        for (let i = 0; i <= world.gridSize; i++) {
-          const pos = i * cellSize;
-          bg.moveTo(pos, 0);
-          bg.lineTo(pos, size);
-          bg.moveTo(0, pos);
-          bg.lineTo(size, pos);
-        }
-        bg.stroke();
-      }
-
-      for (const village of world.villages) {
-        const [r, g, b] = village.color;
-        bg.strokeStyle = `rgba(${r},${g},${b},0.5)`;
-        bg.lineWidth = 2;
+      // Bake road sprite tiles into cached background layer.
+      if (terrainSpritesReady && spritesRef.current) {
         for (let y = 0; y < world.gridSize; y++) {
           for (let x = 0; x < world.gridSize; x++) {
-            const inside = Math.abs(x - village.center.x) + Math.abs(y - village.center.y) <= village.radius;
-            if (!inside) continue;
-            const px = x * cellSize;
-            const py = y * cellSize;
-            if (Math.abs((x - 1) - village.center.x) + Math.abs(y - village.center.y) > village.radius) {
-              bg.beginPath(); bg.moveTo(px, py); bg.lineTo(px, py + cellSize); bg.stroke();
-            }
-            if (Math.abs((x + 1) - village.center.x) + Math.abs(y - village.center.y) > village.radius) {
-              bg.beginPath(); bg.moveTo(px + cellSize, py); bg.lineTo(px + cellSize, py + cellSize); bg.stroke();
-            }
-            if (Math.abs(x - village.center.x) + Math.abs((y - 1) - village.center.y) > village.radius) {
-              bg.beginPath(); bg.moveTo(px, py); bg.lineTo(px + cellSize, py); bg.stroke();
-            }
-            if (Math.abs(x - village.center.x) + Math.abs((y + 1) - village.center.y) > village.radius) {
-              bg.beginPath(); bg.moveTo(px, py + cellSize); bg.lineTo(px + cellSize, py + cellSize); bg.stroke();
-            }
+            if (world.biomes[y][x] !== 'road') continue;
+            drawRoadTileSprite(bg, spritesRef.current, x * cellSize, y * cellSize, cellSize);
           }
         }
       }
@@ -171,28 +514,35 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
     }
 
     ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(backgroundCacheRef.current.canvas, 0, 0);
+    ctx.drawImage(backgroundCacheRef.current.canvas, 0, 0, size, size);
+    const sprites = spritesRef.current;
 
-    // --- Draw houses ---
+    // --- Layer 1: Water + Shore (animated, shared renderer) ---
+    if (sprites) {
+      drawWaterLayer(ctx, sprites.overworld, world.biomes, world.gridSize, cellSize, animTick);
+    }
+
+    // --- Layer 2: Trees (shared renderer) ---
+    if (sprites) {
+      drawTreeLayer(ctx, sprites.overworld, world.trees, cellSize, season, world.biomes);
+    }
+
+    // --- Layer 2b: Structures (stockpiles, houses) ---
+    for (const village of world.villages) {
+      if (!village.stockpile) continue;
+      const sx = village.stockpile.x * cellSize;
+      const sy = village.stockpile.y * cellSize;
+      if (sprites) drawStockpileSprite(ctx, sprites, sx, sy, cellSize, village.color, animTick);
+      else drawStockpile(ctx, sx, sy, cellSize, village.color);
+    }
+
     for (const house of world.houses) {
       const hx = house.position.x * cellSize;
       const hy = house.position.y * cellSize;
       const vc = world.villages.find(v => v.tribe === house.tribe);
       const [r, g, b] = vc?.color ?? [150, 150, 150];
-      // Small house shape
-      ctx.fillStyle = `rgba(${r},${g},${b},0.3)`;
-      ctx.fillRect(hx + cellSize * 0.1, hy + cellSize * 0.1, cellSize * 0.8, cellSize * 0.8);
-      ctx.strokeStyle = `rgb(${r},${g},${b})`;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(hx + cellSize * 0.1, hy + cellSize * 0.1, cellSize * 0.8, cellSize * 0.8);
-      // Roof triangle
-      ctx.beginPath();
-      ctx.moveTo(hx + cellSize * 0.05, hy + cellSize * 0.1);
-      ctx.lineTo(hx + cellSize * 0.5, hy - cellSize * 0.1);
-      ctx.lineTo(hx + cellSize * 0.95, hy + cellSize * 0.1);
-      ctx.closePath();
-      ctx.fillStyle = `rgba(${r},${g},${b},0.5)`;
-      ctx.fill();
+      if (sprites) drawHouseSprite(ctx, sprites, hx, hy, cellSize, house.tribe);
+      else drawHouse(ctx, hx, hy, cellSize, [r, g, b]);
     }
 
     // --- Draw plants (red = has fruit, green = depleted) ---
@@ -200,26 +550,16 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
       const cx = plant.position.x * cellSize + cellSize / 2;
       const cy = plant.position.y * cellSize + cellSize / 2;
       const hasFruit = plant.portions > 0;
-      const r = hasFruit ? cellSize * 0.18 : cellSize * 0.12;
-      ctx.fillStyle = hasFruit ? '#e53935' : '#4caf50';
-      ctx.beginPath();
-      ctx.arc(cx, cy + cellSize * 0.3, r, 0, Math.PI * 2);
-      ctx.fill();
+      if (sprites) drawPlantSprite(ctx, sprites, cx, cy, cellSize, season, hasFruit);
+      else drawPlant(ctx, cx, cy, cellSize, hasFruit);
     }
 
-    // --- Draw animals (brown diamonds) ---
-    ctx.fillStyle = '#8d6e63';
+    // --- Draw animals ---
     for (const animal of world.animals) {
       const cx = animal.position.x * cellSize + cellSize / 2;
       const cy = animal.position.y * cellSize + cellSize / 2;
-      const s = cellSize * 0.2;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - s);
-      ctx.lineTo(cx + s, cy);
-      ctx.lineTo(cx, cy + s);
-      ctx.lineTo(cx - s, cy);
-      ctx.closePath();
-      ctx.fill();
+      if (sprites) drawAnimalSprite(ctx, sprites, cx, cy, cellSize);
+      else drawAnimal(ctx, cx, cy, cellSize);
     }
 
     // --- Group entities by tile ---
@@ -239,13 +579,16 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
     interface DrawData {
       cx: number; cy: number;
       color: string; gender: string;
+      tribe: number;
       age: number; state: string;
       energy: number;
       id: string;
       child: boolean;
+      tileX: number;
+      tileY: number;
     }
     const draws: DrawData[] = [];
-    const tileIcons: Array<{ cx: number; cy: number; icon: string }> = [];
+    const tileIcons: Array<{ cx: number; cy: number; kind: ActionBadge }> = [];
 
     for (const [, group] of tileMap) {
       const count = group.length;
@@ -275,45 +618,44 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
           cx, cy,
           color: entityColor(entity, world.villages),
           gender: entity.gender,
+          tribe: entity.tribe,
           age: ageInYears(entity),
           state: entity.state,
           energy: entity.energy,
           id: entity.id,
           child: ageInYears(entity) < CHILD_AGE,
+          tileX: entity.position.x,
+          tileY: entity.position.y,
         });
       }
 
       const baseCx = group[0].position.x * cellSize + cellSize / 2;
       const baseCy = group[0].position.y * cellSize + cellSize / 2;
       if (hasFighting) {
-        tileIcons.push({ cx: baseCx, cy: baseCy, icon: '⚔' });
+        tileIcons.push({ cx: baseCx, cy: baseCy, kind: 'fight' });
       } else if (hasTraining) {
-        tileIcons.push({ cx: baseCx, cy: baseCy, icon: '💪' });
+        tileIcons.push({ cx: baseCx, cy: baseCy, kind: 'train' });
       } else if (hasHunting) {
-        tileIcons.push({ cx: baseCx, cy: baseCy, icon: '🏹' });
+        tileIcons.push({ cx: baseCx, cy: baseCy, kind: 'hunt' });
       } else if (hasGathering) {
-        tileIcons.push({ cx: baseCx, cy: baseCy, icon: '🌿' });
+        tileIcons.push({ cx: baseCx, cy: baseCy, kind: 'gather' });
       } else if (group.some(e => e.state === 'chopping')) {
-        tileIcons.push({ cx: baseCx, cy: baseCy, icon: '🪓' });
+        tileIcons.push({ cx: baseCx, cy: baseCy, kind: 'chop' });
       } else if (group.some(e => e.state === 'building')) {
-        tileIcons.push({ cx: baseCx, cy: baseCy, icon: '🔨' });
+        tileIcons.push({ cx: baseCx, cy: baseCy, kind: 'build' });
       }
     }
 
     // Draw person figures
-    for (const { cx, cy, color, gender, child } of draws) {
-      drawPerson(ctx, cx, cy, cellSize, gender, color, child);
+    for (const { cx, cy, gender, tribe, child, tileX, tileY } of draws) {
+      if (sprites) drawPersonSprite(ctx, sprites, cx, cy, cellSize, gender, tribe, child, tileX, tileY);
+      else drawPerson(ctx, cx, cy, cellSize, gender, child);
     }
 
-    // Draw gender indicator dot under figure
-    for (const { cx, cy, gender, child } of draws) {
-      const dotY = cy + cellSize * (child ? 0.18 : 0.28);
-      const dotR = cellSize * 0.06;
-      ctx.beginPath();
-      ctx.arc(cx, dotY, dotR, 0, Math.PI * 2);
-      ctx.fillStyle = gender === 'male' ? '#7aa2f7' : '#f7768e';
-      ctx.fill();
-    }
+    // Keep text defaults predictable for next draw passes
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '10px system-ui';
 
     // Draw tracking lines — males to nearest animal, females to nearest plant
     ctx.setLineDash([3, 3]);
@@ -321,10 +663,7 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
     for (const entity of world.entities) {
       if (isEntityAtHome(entity, world)) continue;
       if (entity.state !== 'idle' || ageInYears(entity) < CHILD_AGE) continue;
-      // Only show lines for entities outside their village (actively foraging)
-      const eVillage = world.villages.find(v => v.tribe === entity.tribe);
-      const inVillage = eVillage && Math.abs(entity.position.x - eVillage.center.x) + Math.abs(entity.position.y - eVillage.center.y) <= eVillage.radius;
-      if (inVillage) continue;
+      // Skip idle entities at home (not foraging)
       const ex = entity.position.x * cellSize + cellSize / 2;
       const ey = entity.position.y * cellSize + cellSize / 2;
       const sense = 3 + entity.traits.perception * 2;
@@ -372,19 +711,26 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
     }
     ctx.setLineDash([]);
 
-    // Draw tile icons
+    // Draw tile action badges
     if (tileIcons.length < 300) {
-      const iconSize = Math.max(8, Math.floor(cellSize * 0.35));
-      ctx.font = `${iconSize}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      for (const { cx, cy, icon } of tileIcons) {
-        ctx.fillStyle = '#fff';
-        ctx.fillText(icon, cx, cy - cellSize * 0.42);
+      for (const { cx, cy, kind } of tileIcons) {
+        drawActionBadge(ctx, cx, cy, cellSize, kind);
       }
     }
 
-    // Draw selection highlight
+    // Draw tile selection highlight
+    if (selectedTile) {
+      ctx.strokeStyle = '#e0af68';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(
+        selectedTile.x * cellSize + 1,
+        selectedTile.y * cellSize + 1,
+        cellSize - 2,
+        cellSize - 2,
+      );
+    }
+
+    // Draw entity selection highlight
     if (selectedId) {
       const sel = draws.find(d => d.id === selectedId);
       if (sel) {
@@ -398,14 +744,14 @@ export function GridCanvas({ world, size, selectedId, onClick }: GridCanvasProps
         );
       }
     }
-  }, [world, size, selectedId]);
+  }, [world, size, selectedId, selectedTile, animTick]);
 
   return (
     <canvas
       ref={canvasRef}
       width={size}
       height={size}
-      style={{ borderRadius: '4px', cursor: 'pointer', width: '100%', height: 'auto' }}
+      style={{ borderRadius: '4px', cursor: 'pointer', width: `${size}px`, height: `${size}px` }}
       onClick={handleClick}
     />
   );

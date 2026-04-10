@@ -35,8 +35,6 @@ function makeEntity(overrides: Partial<Entity> = {}): Entity {
 function makeContext(overrides: Partial<AIContext> = {}): AIContext {
   const village = {
     tribe: 0,
-    center: { x: 5, y: 5 },
-    radius: 3,
     color: [220, 60, 60] as [number, number, number],
     name: 'Red Tribe',
     meatStore: 5,
@@ -46,7 +44,7 @@ function makeContext(overrides: Partial<AIContext> = {}): AIContext {
   return {
     entity: makeEntity(),
     village,
-    inVillage: true,
+    nearHome: true,
     isNight: false,
     villageNeedsHouses: false,
     tribePopulation: 12,
@@ -56,24 +54,30 @@ function makeContext(overrides: Partial<AIContext> = {}): AIContext {
 }
 
 describe('decideAction gather behavior', () => {
-  it('female outside village with no visible plants wanders to search', () => {
-    const action = decideAction(makeContext({ inVillage: false, nearestPlant: undefined }));
+  it('female away from home with no visible plants wanders to search', () => {
+    const action = decideAction(makeContext({ nearHome: false, nearestPlant: undefined }));
     expect(action.type).toBe('wander');
   });
 
-  it('female in village leaves village when pantry needs plants', () => {
-    const action = decideAction(makeContext({ inVillage: true, nearestPlant: undefined }));
-    expect(action.type).toBe('leave_village');
+  it('female near home goes directly to gather when pantry needs plants', () => {
+    const action = decideAction(makeContext({
+      nearHome: true,
+      nearestPlant: { pos: { x: 8, y: 5 }, dist: 3 },
+    }));
+    expect(action.type).toBe('go_gather');
   });
 
-  it('female stays in village when total food and plant reserves are enough', () => {
+  it('female near home wanders when pantry needs plants but no target visible', () => {
+    const action = decideAction(makeContext({ nearHome: true, nearestPlant: undefined }));
+    expect(action.type).toBe('wander');
+  });
+
+  it('female stays near home when total food and plant reserves are enough', () => {
     const action = decideAction(
       makeContext({
-        inVillage: true,
+        nearHome: true,
         village: {
           tribe: 0,
-          center: { x: 5, y: 5 },
-          radius: 3,
           color: [220, 60, 60],
           name: 'Red Tribe',
           meatStore: 60,
@@ -100,8 +104,6 @@ describe('decideAction gather behavior', () => {
     });
     const village = {
       tribe: 0,
-      center: { x: 5, y: 5 },
-      radius: 3,
       color: [220, 60, 60] as [number, number, number],
       name: 'Red Tribe',
       meatStore: 5,
@@ -124,7 +126,7 @@ describe('decideAction gather behavior', () => {
 });
 
 describe('decideAction hunt behavior', () => {
-  it('male without home can still choose go_hunt when prey is visible outside village', () => {
+  it('male away from home can still choose go_hunt when prey is visible', () => {
     const action = decideAction(
       makeContext({
         entity: makeEntity({
@@ -132,7 +134,7 @@ describe('decideAction hunt behavior', () => {
           homeId: undefined,
           mateCooldown: 0,
         }),
-        inVillage: false,
+        nearHome: false,
         nearestAnimal: { pos: { x: 7, y: 5 }, dist: 2 },
         nearestForest: undefined,
       }),
@@ -140,14 +142,14 @@ describe('decideAction hunt behavior', () => {
     expect(action.type).toBe('go_hunt');
   });
 
-  it('male outside village with no visible prey wanders to search', () => {
+  it('male away from home with no visible prey wanders to search', () => {
     const action = decideAction(
       makeContext({
         entity: makeEntity({
           gender: 'male',
           homeId: undefined,
         }),
-        inVillage: false,
+        nearHome: false,
         nearestAnimal: undefined,
       }),
     );
@@ -161,7 +163,7 @@ describe('decideAction hunt behavior', () => {
           gender: 'male',
           energy: 10,
         }),
-        inVillage: false,
+        nearHome: false,
         nearestAnimal: undefined,
         nearestPlant: { pos: { x: 7, y: 5 }, dist: 2 },
       }),
@@ -173,12 +175,11 @@ describe('decideAction hunt behavior', () => {
     const action = decideAction(
       makeContext({
         entity: makeEntity({ gender: 'male' }),
-        inVillage: false,
+        nearHome: false,
+        homeTarget: { x: 5, y: 5 },
         nearestAnimal: { pos: { x: 7, y: 5 }, dist: 2 },
         village: {
           tribe: 0,
-          center: { x: 5, y: 5 },
-          radius: 3,
           color: [220, 60, 60],
           name: 'Red Tribe',
           meatStore: 60,
@@ -198,12 +199,10 @@ describe('decideAction hunt behavior', () => {
           energy: 80,
         }),
         isNight: true,
-        inVillage: false,
+        nearHome: false,
         nearestAnimal: { pos: { x: 8, y: 5 }, dist: 3 },
         village: {
           tribe: 0,
-          center: { x: 5, y: 5 },
-          radius: 3,
           color: [220, 60, 60],
           name: 'Red Tribe',
           meatStore: 5,
@@ -223,12 +222,10 @@ describe('decideAction hunt behavior', () => {
           energy: 20,
         }),
         isNight: true,
-        inVillage: false,
+        nearHome: false,
         nearestAnimal: { pos: { x: 8, y: 5 }, dist: 3 },
         village: {
           tribe: 0,
-          center: { x: 5, y: 5 },
-          radius: 3,
           color: [220, 60, 60],
           name: 'Red Tribe',
           meatStore: 5,
