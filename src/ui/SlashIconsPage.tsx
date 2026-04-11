@@ -252,7 +252,7 @@ export function SlashIconsPage() {
               { src: STRUCTURES, sx: 40, sy: 104 }, { src: STRUCTURES, sx: 48, sy: 104 }, { src: STRUCTURES, sx: 56, sy: 104 },
               { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
             ]} />
-            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>v1 (red)</div>
+            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>red v1</div>
           </div>
           <div style={{ textAlign: 'center' }}>
             <CompositeSprite cols={3} tiles={[
@@ -260,7 +260,7 @@ export function SlashIconsPage() {
               { src: STRUCTURES, sx: 104, sy: 104 }, { src: STRUCTURES, sx: 112, sy: 104 }, { src: STRUCTURES, sx: 120, sy: 104 },
               { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
             ]} />
-            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>v2 (blue)</div>
+            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>red v2</div>
           </div>
           <div style={{ textAlign: 'center' }}>
             <CompositeSprite cols={3} tiles={[
@@ -268,7 +268,7 @@ export function SlashIconsPage() {
               { src: STRUCTURES, sx: 168, sy: 104 }, { src: STRUCTURES, sx: 176, sy: 104 }, { src: STRUCTURES, sx: 184, sy: 104 },
               { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
             ]} />
-            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>v3 (green)</div>
+            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>red v3</div>
           </div>
         </div>
       </section>
