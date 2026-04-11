@@ -6,9 +6,8 @@ import {
   FOOD_RESERVE_MAX, FOOD_RESERVE_MIN, FOOD_RESERVE_PER_PERSON, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST, PLANT_RESERVE_MIN,
   ANIMAL_COUNT, PLANT_COUNT, PLANT_MAX, PLANT_RESPAWN_INTERVAL, scaled,
   PLANT_PORTIONS, PLANT_PORTIONS_PER_GATHER, PLANT_SPRING_FRUIT_CHANCE, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
-  CHOPPING_DURATION, BUILDING_DURATION,
-  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_HUNT_MIN_POPULATION, ANIMAL_FLEE_RANGE, HUNT_KILL_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS,
-  WOOD_PER_CHOP, HOUSE_WOOD_COST, WINTER_COLD_DAMAGE, NEAR_HOME_RANGE,
+  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_HUNT_MIN_POPULATION, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS,
+  WOOD_PER_CHOP, WINTER_COLD_DAMAGE, NEAR_HOME_RANGE,
 } from './types';
 import { generateBiomeGrid, isPassable } from './biomes';
 import type { BiomeGenParams } from './biomes';
@@ -100,17 +99,8 @@ function villageNeedsPlants(village: Village | undefined, entities: Entity[]): b
   return villageNeedsFood(village, entities) || (!!village && village.plantStore < PLANT_RESERVE_MIN);
 }
 
-function canHuntAnimalPopulation(animals: Animal[], gridSize: number): boolean {
+export function canHuntAnimalPopulation(animals: Animal[], gridSize: number): boolean {
   return animals.length > scaled(ANIMAL_HUNT_MIN_POPULATION, gridSize, 2);
-}
-
-function canGatherPlant(entity: Entity, village: Village | undefined, entities: Entity[]): boolean {
-  if (entity.gender === 'female') return isHungry(entity) || villageNeedsPlants(village, entities);
-  return entity.gender === 'male' && isHungry(entity);
-}
-
-function shouldStoreGatheredPlants(entity: Entity, village: Village | undefined, entities: Entity[]): boolean {
-  return entity.gender === 'female' && !!village && villageNeedsPlants(village, entities);
 }
 
 function randomTraits(): Traits {
@@ -917,79 +907,6 @@ export function tick(state: WorldState): WorldState {
   // --- Step 2: Detect interactions (pre-movement) ---
   entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, houses, log, tickNum);
 
-  // --- Step 2b: Instant hunting/gathering (on contact) ---
-  for (let i = 0; i < entities.length; i++) {
-    const e = entities[i];
-    if (e.state !== 'idle') continue;
-
-    // Males hunt animals on same tile — instant kill (only if pantry needs it)
-    const huntVillage = getVillage(e.tribe);
-    const huntVillageNeedsFood = villageNeedsFood(huntVillage, entities);
-    const shouldHunt = e.gender === 'male' && canHuntAnimalPopulation(animals, gridSize) && (isHungry(e) || huntVillageNeedsFood);
-    if (shouldHunt) {
-      const preyIdx = animals.findIndex(a =>
-        Math.abs(a.position.x - e.position.x) + Math.abs(a.position.y - e.position.y) <= HUNT_KILL_RANGE
-      );
-      if (preyIdx >= 0) {
-        animals.splice(preyIdx, 1);
-        const direct = eatDirectlyToThreshold(e, ENERGY_MEAT, MEAT_PORTIONS_PER_HUNT);
-        const surplus = direct.remainingPortions;
-        let updated = direct.entity;
-        const myV = getVillage(e.tribe);
-        if (myV && huntVillageNeedsFood) myV.meatStore += surplus;
-        else updated = { ...updated, meat: updated.meat + surplus };
-        entities[i] = updated;
-        continue;
-      }
-    }
-
-    const gatherVillage = getVillage(e.tribe);
-    if (canGatherPlant(e, gatherVillage, entities)) {
-      const plantIdx = plants.findIndex(p =>
-        p.portions > 0 && p.position.x === e.position.x && p.position.y === e.position.y
-      );
-      if (plantIdx >= 0) {
-        plants[plantIdx] = { ...plants[plantIdx], portions: plants[plantIdx].portions - 1 };
-        const direct = eatDirectlyToThreshold(e, ENERGY_PLANT, PLANT_PORTIONS_PER_GATHER);
-        const surplus = direct.remainingPortions;
-        if (shouldStoreGatheredPlants(e, gatherVillage, entities)) gatherVillage!.plantStore += surplus;
-        entities[i] = direct.entity;
-        continue;
-      }
-    }
-
-    // Male without house, on forest tile → chop tree
-    if (e.gender === 'male' && !isChild(e)
-        && biomes[e.position.y][e.position.x] === 'forest') {
-      entities[i] = { ...e, state: 'chopping', stateTimer: CHOPPING_DURATION, goal: undefined };
-      continue;
-    }
-  }
-
-  // --- Step 2c: Building — male builds when village needs more houses for homeless females ---
-  for (let i = 0; i < entities.length; i++) {
-    const e = entities[i];
-    if (e.gender !== 'male' || isChild(e)) continue;
-    if (e.state !== 'idle') continue;
-    const eVillage = updatedVillages.find(v => v.tribe === e.tribe);
-    if (!eVillage || eVillage.woodStore < HOUSE_WOOD_COST) continue;
-    // Must be adjacent to an existing tribe house (or first house = anywhere)
-    const tribeHouses = houses.filter(h => h.tribe === e.tribe);
-    if (tribeHouses.length > 0 && !tribeHouses.some(h => manhattan(e.position, h.position) === 1)) continue;
-    // Check if village needs houses: homeless females > free houses
-    const tribeFemales = entities.filter(o => o.tribe === e.tribe && o.gender === 'female' && !isChild(o) && !o.homeId);
-    const freeHouses = houses.filter(h => h.tribe === e.tribe && !h.occupantId);
-    const alreadyBuilding = entities.some(o => o.tribe === e.tribe && o.state === 'building');
-    if (tribeFemales.length <= freeHouses.length && !alreadyBuilding) continue;
-    if (tribeFemales.length === 0) continue;
-    if (isRoadTile(e.position, biomes)) continue;
-    const tileOccupied = hasStructureAt(e.position, houses, updatedVillages)
-      || entities.some(o => o.id !== e.id && o.state === 'building' && o.position.x === e.position.x && o.position.y === e.position.y);
-    if (tileOccupied) continue;
-    eVillage.woodStore -= HOUSE_WOOD_COST;
-    entities[i] = { ...e, state: 'building', stateTimer: BUILDING_DURATION, goal: undefined };
-  }
-
   // --- Step 3: Move idle entities ---
   const moveGrid = createOccupancyGrid(gridSize, entities, houses);
   const indices = Array.from({ length: entities.length }, (_, i) => i);
@@ -1071,32 +988,6 @@ export function tick(state: WorldState): WorldState {
             break;
           }
 
-          // Inline instant hunt/gather on each step
-          const stepV = getVillage(entity.tribe);
-          const stepVillageNeedsFood = villageNeedsFood(stepV, entities);
-          if (entity.gender === 'male' && canHuntAnimalPopulation(animals, gridSize) && (isHungry(entity) || stepVillageNeedsFood)) {
-            const pi = animals.findIndex(a => Math.abs(a.position.x - entity.position.x) + Math.abs(a.position.y - entity.position.y) <= HUNT_KILL_RANGE);
-            if (pi >= 0) {
-              animals.splice(pi, 1);
-              const direct = eatDirectlyToThreshold(entity, ENERGY_MEAT, MEAT_PORTIONS_PER_HUNT);
-              if (stepV) stepV.meatStore += direct.remainingPortions;
-              entity = { ...entity, ...direct.entity, goal: undefined };
-              entities[idx] = entity;
-              logEvent(entity, 'hunt');
-              break; // hunt complete, goal done
-            }
-          }
-          if (canGatherPlant(entity, stepV, entities)) {
-            const pi = plants.findIndex(p => p.portions > 0 && p.position.x === entity.position.x && p.position.y === entity.position.y);
-            if (pi >= 0) {
-              plants[pi] = { ...plants[pi], portions: plants[pi].portions - 1 };
-              const direct = eatDirectlyToThreshold(entity, ENERGY_PLANT, PLANT_PORTIONS_PER_GATHER);
-              if (shouldStoreGatheredPlants(entity, stepV, entities)) stepV!.plantStore += direct.remainingPortions;
-              entity = { ...entity, ...direct.entity, goal: undefined };
-              entities[idx] = entity;
-              break; // gather complete, goal done
-            }
-          }
         }
       }
     }
@@ -1104,74 +995,6 @@ export function tick(state: WorldState): WorldState {
 
   // --- Step 4: Detect interactions (post-movement) ---
   entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, houses, log, tickNum);
-
-  // --- Step 4b: Instant hunting/gathering (post-movement) ---
-  for (let i = 0; i < entities.length; i++) {
-    const e = entities[i];
-    if (e.state !== 'idle') continue;
-
-    const postHuntV = getVillage(e.tribe);
-    const postVillageNeedsFood = villageNeedsFood(postHuntV, entities);
-    const postShouldHunt = e.gender === 'male' && canHuntAnimalPopulation(animals, gridSize) && (isHungry(e) || postVillageNeedsFood);
-    if (postShouldHunt) {
-      const preyIdx = animals.findIndex(a =>
-        Math.abs(a.position.x - e.position.x) + Math.abs(a.position.y - e.position.y) <= HUNT_KILL_RANGE
-      );
-      if (preyIdx >= 0) {
-        animals.splice(preyIdx, 1);
-        const direct = eatDirectlyToThreshold(e, ENERGY_MEAT, MEAT_PORTIONS_PER_HUNT);
-        let updated = direct.entity;
-        if (postHuntV && postVillageNeedsFood) postHuntV.meatStore += direct.remainingPortions;
-        else updated = { ...updated, meat: updated.meat + direct.remainingPortions };
-        entities[i] = updated;
-        logEvent(updated, 'hunt');
-        continue;
-      }
-    }
-
-    const postGatherV = getVillage(e.tribe);
-    if (canGatherPlant(e, postGatherV, entities)) {
-      const plantIdx = plants.findIndex(p =>
-        p.portions > 0 && p.position.x === e.position.x && p.position.y === e.position.y
-      );
-      if (plantIdx >= 0) {
-        plants[plantIdx] = { ...plants[plantIdx], portions: plants[plantIdx].portions - 1 };
-        const direct = eatDirectlyToThreshold(e, ENERGY_PLANT, PLANT_PORTIONS_PER_GATHER);
-        if (shouldStoreGatheredPlants(e, postGatherV, entities)) postGatherV!.plantStore += direct.remainingPortions;
-        entities[i] = direct.entity;
-        continue;
-      }
-    }
-
-    if (e.gender === 'male' && !isChild(e)
-        && biomes[e.position.y][e.position.x] === 'forest') {
-      entities[i] = { ...e, state: 'chopping', stateTimer: CHOPPING_DURATION, goal: undefined };
-      continue;
-    }
-  }
-
-  // --- Step 4c: Building (post-movement) ---
-  for (let i = 0; i < entities.length; i++) {
-    const e = entities[i];
-    if (e.gender !== 'male' || isChild(e)) continue;
-    if (e.state !== 'idle') continue;
-    const postBuildV = updatedVillages.find(v => v.tribe === e.tribe);
-    if (!postBuildV || postBuildV.woodStore < HOUSE_WOOD_COST) continue;
-    // Must be adjacent to an existing tribe house (or first house = anywhere)
-    const postTribeHouses = houses.filter(h => h.tribe === e.tribe);
-    if (postTribeHouses.length > 0 && !postTribeHouses.some(h => manhattan(e.position, h.position) === 1)) continue;
-    const postTribeFemales = entities.filter(o => o.tribe === e.tribe && o.gender === 'female' && !isChild(o) && !o.homeId);
-    const postFreeHouses = houses.filter(h => h.tribe === e.tribe && !h.occupantId);
-    const postAlreadyBuilding = entities.some(o => o.tribe === e.tribe && o.state === 'building');
-    if (postTribeFemales.length <= postFreeHouses.length && !postAlreadyBuilding) continue;
-    if (postTribeFemales.length === 0) continue;
-    if (isRoadTile(e.position, biomes)) continue;
-    const postTileOccupied = hasStructureAt(e.position, houses, updatedVillages)
-      || entities.some(o => o.id !== e.id && o.state === 'building' && o.position.x === e.position.x && o.position.y === e.position.y);
-    if (postTileOccupied) continue;
-    postBuildV.woodStore -= HOUSE_WOOD_COST;
-    entities[i] = { ...e, state: 'building', stateTimer: BUILDING_DURATION, goal: undefined };
-  }
 
   // --- Step 5: Move animals (AFTER humans so hunters can catch them) ---
   animals = animals.map(a => {
