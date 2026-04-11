@@ -1,12 +1,12 @@
-import type { Entity, Animal, Plant, Tree, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId, DeathCause } from './types';
+import type { Entity, Animal, Tree, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId, DeathCause } from './types';
 import {
   MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR,
   PREGNANCY_DURATION, BIRTH_COOLDOWN, INFANT_MORTALITY, MATERNAL_MORTALITY, FIGHTING_DURATION, TICKS_PER_DAY, MATE_COOLDOWN,
   ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
   FOOD_RESERVE_MAX, FOOD_RESERVE_MIN, FOOD_RESERVE_PER_PERSON, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST, PLANT_RESERVE_MIN,
-  ANIMAL_COUNT, PLANT_COUNT, PLANT_MAX, PLANT_RESPAWN_INTERVAL, scaled,
-  PLANT_PORTIONS, PLANT_PORTIONS_PER_GATHER, PLANT_SPRING_FRUIT_CHANCE, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
-  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_HUNT_MIN_POPULATION, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS,
+  ANIMAL_COUNT, scaled,
+  FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT, TREE_FRUIT_PORTIONS,
+  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_HUNT_MIN_POPULATION, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY,
   WOOD_PER_CHOP, WINTER_COLD_DAMAGE, NEAR_HOME_RANGE,
   CHOPPING_DURATION, BUILDING_DURATION, HUNT_KILL_RANGE, HOUSE_WOOD_COST,
 } from './types';
@@ -248,14 +248,6 @@ function randomPassablePos(biomes: Biome[][], gridSize: number): Position {
   return randomPos(gridSize); // fallback
 }
 
-function randomForestPos(biomes: Biome[][], gridSize: number): Position {
-  for (let i = 0; i < 100; i++) {
-    const p = randomPos(gridSize);
-    if (biomes[p.y][p.x] === 'forest') return p;
-  }
-  return randomPassablePos(biomes, gridSize); // fallback if map has very little forest
-}
-
 function isValidMove(pos: Position, biomes: Biome[][], gridSize: number): boolean {
   if (pos.x < 0 || pos.x >= gridSize || pos.y < 0 || pos.y >= gridSize) return false;
   return isPassable(biomes[pos.y][pos.x]);
@@ -418,30 +410,25 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     });
   }
 
-  const plantCount = scaled(PLANT_COUNT, gridSize, 2);
-  const plants: Plant[] = [];
-  for (let i = 0; i < plantCount; i++) {
-    const mature = i < plantCount / 2;
-    plants.push({
-      id: generateId('p'),
-      position: randomForestPos(biomes, gridSize),
-      portions: mature ? PLANT_PORTIONS : 0,
-      maxPortions: PLANT_PORTIONS,
-    });
-  }
-
-  // Place a tree on every forest tile
+  // Place a tree on every forest tile; ~20% are fruiting and start with fruit
   const trees: Tree[] = [];
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (biomes[y][x] === 'forest') {
         const isFruitTree = Math.random() < 0.2; // ~20% fruit trees
-        trees.push({ id: generateId('t'), position: { x, y }, chopped: false, fruiting: isFruitTree, hasFruit: false });
+        trees.push({
+          id: generateId('t'),
+          position: { x, y },
+          chopped: false,
+          fruiting: isFruitTree,
+          hasFruit: isFruitTree,
+          fruitPortions: isFruitTree ? TREE_FRUIT_PORTIONS : 0,
+        });
       }
     }
   }
 
-  return { entities, animals, plants, trees, houses: [], biomes, villages, tick: 0, gridSize, log: [] };
+  return { entities, animals, trees, houses: [], biomes, villages, tick: 0, gridSize, log: [] };
 }
 
 // --- Interaction detection (fighting/training only — mating removed) ---
@@ -590,7 +577,6 @@ function pheromoneMating(entities: Entity[], log: LogEntry[], tickNum: number): 
 export function tick(state: WorldState): WorldState {
   const { gridSize } = state;
   const animalMax = scaled(ANIMAL_MAX, gridSize, 4);
-  const plantMax = scaled(PLANT_MAX, gridSize, 4);
   const biomes = state.biomes.map(row => [...row]);
   let trees = state.trees.map(t => ({ ...t, position: { ...t.position } }));
   const tickNum = state.tick + 1;
@@ -602,7 +588,6 @@ export function tick(state: WorldState): WorldState {
     log.push({ tick: tickNum, type, entityId: e.id, name: e.name, gender: e.gender, age: e.age, ...extra });
   }
   let animals = state.animals.map(a => ({ ...a, position: { ...a.position } }));
-  let plants = state.plants.map(p => ({ ...p, position: { ...p.position } }));
   let houses = state.houses.map(h => ({ ...h, position: { ...h.position } }));
   const stockpileTiles = new Set(
     updatedVillages
@@ -675,7 +660,6 @@ export function tick(state: WorldState): WorldState {
   const resolvedIds = new Set<string>();
   const deadIds = new Set<string>();
   const consumedAnimalIds = new Set<string>();
-  const consumedPlantIds = new Set<string>();
 
   const busyByTile = new Map<number, Entity[]>();
   for (const e of entities) {
@@ -808,13 +792,18 @@ export function tick(state: WorldState): WorldState {
       }
     } else if (action === 'gathering') {
       for (const gatherer of finishing) {
-        const plant = plants.find(p =>
-          p.position.x === gatherer.position.x &&
-          p.position.y === gatherer.position.y &&
-          !consumedPlantIds.has(p.id)
+        // Gather from fruit tree on same tile
+        const treeIdx = trees.findIndex(tr =>
+          tr.hasFruit && tr.fruitPortions > 0 &&
+          tr.position.x === gatherer.position.x &&
+          tr.position.y === gatherer.position.y
         );
-        if (plant) {
-          consumedPlantIds.add(plant.id);
+        if (treeIdx >= 0) {
+          trees[treeIdx] = {
+            ...trees[treeIdx],
+            fruitPortions: trees[treeIdx].fruitPortions - 1,
+            hasFruit: trees[treeIdx].fruitPortions > 1,
+          };
         }
         resolvedIds.add(gatherer.id);
       }
@@ -863,13 +852,14 @@ export function tick(state: WorldState): WorldState {
             if (myVillage) myVillage.meatStore += surplus;
           }
         } else if (e.state === 'gathering') {
-          const hadPlant = plants.some(p =>
-            p.position.x === e.position.x &&
-            p.position.y === e.position.y &&
-            consumedPlantIds.has(p.id)
+          // Fruit from tree at this position — check if any tree here had fruit taken
+          const fruitTree = trees.find(tr =>
+            tr.fruiting &&
+            tr.position.x === e.position.x &&
+            tr.position.y === e.position.y
           );
-          if (hadPlant) {
-            const direct = eatDirectlyToThreshold(e, ENERGY_PLANT, PLANT_PORTIONS_PER_GATHER);
+          if (fruitTree) {
+            const direct = eatDirectlyToThreshold(e, ENERGY_PLANT, TREE_FRUIT_PORTIONS);
             energy = direct.entity.energy;
             const surplus = direct.remainingPortions;
             if (myVillage && villageNeedsPlants(myVillage, entities)) myVillage.plantStore += surplus;
@@ -893,7 +883,6 @@ export function tick(state: WorldState): WorldState {
 
   // Remove consumed resources
   animals = animals.filter(a => !consumedAnimalIds.has(a.id));
-  plants = plants.filter(p => !consumedPlantIds.has(p.id));
 
   // (Animals move after human movement + hunting detection — see step 5)
 
@@ -923,7 +912,7 @@ export function tick(state: WorldState): WorldState {
 
     // Periodic re-evaluation with hysteresis
     if (entity.goal && tickNum > 0 && (tickNum - entity.goalSetTick) % 20 === 0) {
-      const ctx = buildAIContext(entity, updatedVillages, animals, plants, entities, biomes, gridSize, tickNum, houses);
+      const ctx = buildAIContext(entity, updatedVillages, animals, trees, entities, biomes, gridSize, tickNum, houses);
       const result = shouldReEvaluate(ctx, entity.goal.type, entity.goalSetTick, tickNum);
       if (result.interrupt && result.newAction) {
         const goal = actionToGoal(result.newAction, ctx);
@@ -938,7 +927,7 @@ export function tick(state: WorldState): WorldState {
 
     // Get goal from utility-AI if none
     if (!entity.goal) {
-      const ctx = buildAIContext(entity, updatedVillages, animals, plants, entities, biomes, gridSize, tickNum, houses);
+      const ctx = buildAIContext(entity, updatedVillages, animals, trees, entities, biomes, gridSize, tickNum, houses);
       const action = decideAction(ctx);
       const goal = actionToGoal(action, ctx);
       if (goal) {
@@ -1009,12 +998,17 @@ export function tick(state: WorldState): WorldState {
                 logEvent(entity, 'hunt');
               }
             } else if (goalType === 'gather') {
-              const pi = plants.findIndex(p =>
-                p.portions > 0 && p.position.x === entity.position.x && p.position.y === entity.position.y
+              const treeIdx = trees.findIndex(tr =>
+                tr.hasFruit && tr.fruitPortions > 0 &&
+                tr.position.x === entity.position.x && tr.position.y === entity.position.y
               );
-              if (pi >= 0) {
-                plants[pi] = { ...plants[pi], portions: plants[pi].portions - 1 };
-                const direct = eatDirectlyToThreshold(entity, ENERGY_PLANT, PLANT_PORTIONS_PER_GATHER);
+              if (treeIdx >= 0) {
+                trees[treeIdx] = {
+                  ...trees[treeIdx],
+                  fruitPortions: trees[treeIdx].fruitPortions - 1,
+                  hasFruit: trees[treeIdx].fruitPortions > 1,
+                };
+                const direct = eatDirectlyToThreshold(entity, ENERGY_PLANT, TREE_FRUIT_PORTIONS);
                 const v = getVillage(entity.tribe);
                 if (v && villageNeedsFood(v, entities)) v.plantStore += direct.remainingPortions;
                 entity = direct.entity;
@@ -1066,16 +1060,16 @@ export function tick(state: WorldState): WorldState {
       newPos = isValidMove(flee, biomes, gridSize)
         ? flee : randomStepBiome(a.position, gridSize, biomes);
     } else {
-      let nearestFood: Plant | undefined;
-      for (const p of plants) {
-        if (p.portions <= 0) continue;
-        const d = manhattan(a.position, p.position);
-        if (d <= 8 && (!nearestFood || d < manhattan(a.position, nearestFood.position))) {
-          nearestFood = p;
+      let nearestFruitTree: Tree | undefined;
+      for (const t of trees) {
+        if (!t.hasFruit || t.fruitPortions <= 0) continue;
+        const d = manhattan(a.position, t.position);
+        if (d <= 8 && (!nearestFruitTree || d < manhattan(a.position, nearestFruitTree.position))) {
+          nearestFruitTree = t;
         }
       }
-      if (nearestFood) {
-        newPos = stepToward(a.position, nearestFood.position, biomes, gridSize);
+      if (nearestFruitTree) {
+        newPos = stepToward(a.position, nearestFruitTree.position, biomes, gridSize);
       } else {
         // Idle — stay put most ticks, occasional wander (~10% chance)
         newPos = Math.random() < 0.1
@@ -1086,16 +1080,21 @@ export function tick(state: WorldState): WorldState {
     return { ...a, position: newPos, reproTimer: Math.max(0, a.reproTimer - 1) };
   });
 
-  // --- Step 5a: Animals eat fruiting plants and reproduce from that food ---
+  // --- Step 5a: Animals eat from fruit trees and reproduce from that food ---
   const fedBabyAnimals: Animal[] = [];
   for (let i = 0; i < animals.length; i++) {
     const a = animals[i];
-    const plantIdx = plants.findIndex(p =>
-      p.portions > 0 && p.position.x === a.position.x && p.position.y === a.position.y
+    const fruitTreeIdx = trees.findIndex(tr =>
+      tr.hasFruit && tr.fruitPortions > 0 &&
+      tr.position.x === a.position.x && tr.position.y === a.position.y
     );
-    if (plantIdx < 0) continue;
+    if (fruitTreeIdx < 0) continue;
 
-    plants[plantIdx] = { ...plants[plantIdx], portions: plants[plantIdx].portions - 1 };
+    trees[fruitTreeIdx] = {
+      ...trees[fruitTreeIdx],
+      fruitPortions: trees[fruitTreeIdx].fruitPortions - 1,
+      hasFruit: trees[fruitTreeIdx].fruitPortions > 1,
+    };
     if (a.reproTimer > 0) continue;
     if (animals.length + fedBabyAnimals.length >= animalMax) continue;
 
@@ -1145,94 +1144,40 @@ export function tick(state: WorldState): WorldState {
     animals.push(...babyAnimals);
   }
 
-  // --- Step 6: Seasonal plant cycle + respawn ---
-  // Autumn: seeded spread from plants that still have fruit.
-  // Winter: no fruit.
-  // Spring: partial fruiting.
-  // Summer: all plants fruit again.
+  // --- Step 6: Seasonal fruit tree cycle ---
+  // Summer start: all fruiting trees get full fruit.
+  // Spring start: 40% of fruiting trees get fruit.
+  // Winter: all trees lose fruit.
+  // Autumn: fruit stays from summer.
   const ticksPerMonth = TICKS_PER_DAY * 10;
   const month = Math.floor((tickNum % TICKS_PER_YEAR) / ticksPerMonth);
   const season = Math.floor(month / 3);
   const isWinter = season === 3;
-  const isAutumn = season === 2;
-  const isAutumnSpreadTick = isAutumn && (tickNum % TICKS_PER_DAY) === 0;
   const isSpringStart = month === 0 && (tickNum % ticksPerMonth) === 0;
   const isSummerStart = month === 3 && (tickNum % ticksPerMonth) === 0;
 
-  if (isAutumnSpreadTick) {
-    // Autumn propagation (daily): only plants that still have fruit can seed.
-    // New plants start without fruit; they fruit in summer.
-    const basePlants = plants.filter(p => p.portions > 0);
-    const occupied = new Set(plants.map(p => `${p.position.x},${p.position.y}`));
-    for (const parent of basePlants) {
-      if (plants.length >= plantMax) break;
-      const attempts = Math.floor(Math.random() * 2); // 0..1
-      for (let a = 0; a < attempts && plants.length < plantMax; a++) {
-        let spawned = false;
-        for (let t = 0; t < 10 && !spawned; t++) {
-          const dx = Math.floor(Math.random() * 7) - 3; // -3..3
-          const dy = Math.floor(Math.random() * 7) - 3; // -3..3
-          const dist = Math.abs(dx) + Math.abs(dy);
-          if (dist < 1 || dist > 3) continue;
-          const nx = parent.position.x + dx;
-          const ny = parent.position.y + dy;
-          if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) continue;
-          if (biomes[ny][nx] !== 'forest') continue; // plants spread only in forest
-          const key = `${nx},${ny}`;
-          if (occupied.has(key)) continue;
-          plants.push({
-            id: generateId('p'),
-            position: { x: nx, y: ny },
-            portions: 0,
-            maxPortions: PLANT_PORTIONS,
-          });
-          occupied.add(key);
-          spawned = true;
-        }
-      }
-    }
-  }
-
   if (isWinter) {
-    // Winter: plants remain but are not fruiting.
-    plants = plants.map(p => ({ ...p, portions: 0 }));
+    // Winter: all trees lose fruit
+    trees = trees.map(t => t.hasFruit ? { ...t, fruitPortions: 0, hasFruit: false } : t);
   }
 
   if (isSpringStart) {
-    // Spring: some plants fruit early, giving villages a pre-summer food source.
-    plants = plants.map(p => (
-      Math.random() < PLANT_SPRING_FRUIT_CHANCE ? { ...p, portions: p.maxPortions } : p
-    ));
+    // Spring: 40% of fruiting trees get fruit
+    trees = trees.map(t =>
+      t.fruiting && !t.chopped && Math.random() < 0.4
+        ? { ...t, fruitPortions: TREE_FRUIT_PORTIONS, hasFruit: true }
+        : t
+    );
   }
 
   if (isSummerStart) {
-    // All plants gain fruit at start of summer.
-    plants = plants.map(p => ({ ...p, portions: p.maxPortions }));
+    // Summer: all fruiting trees get full fruit
+    trees = trees.map(t =>
+      t.fruiting && !t.chopped
+        ? { ...t, fruitPortions: TREE_FRUIT_PORTIONS, hasFruit: true }
+        : t
+    );
   }
-
-  // Slow new plant spawns
-  if (tickNum % PLANT_RESPAWN_INTERVAL === 0 && plants.length < plantMax) {
-    plants.push({
-      id: generateId('p'),
-      position: randomForestPos(biomes, gridSize),
-      portions: isWinter ? 0 : PLANT_PORTIONS,
-      maxPortions: PLANT_PORTIONS,
-    });
-    for (let b = 0; b < FOREST_PLANT_BONUS && plants.length < plantMax; b++) {
-      const p = randomPos(gridSize);
-      if (biomes[p.y][p.x] === 'forest') {
-        plants.push({
-          id: generateId('p'),
-          position: p,
-          portions: isWinter ? 0 : PLANT_PORTIONS,
-          maxPortions: PLANT_PORTIONS,
-        });
-      }
-    }
-  }
-
-  // Hard rule: plants can exist only on forest tiles.
-  plants = plants.filter(p => biomes[p.position.y]?.[p.position.x] === 'forest');
 
   // --- Step 7: Pheromone mating (every tick, not just night) ---
   entities = pheromoneMating(entities, log, tickNum);
@@ -1263,5 +1208,5 @@ export function tick(state: WorldState): WorldState {
   }
 
   const fullLog = [...state.log, ...log];
-  return { entities, animals, plants, trees, houses, biomes, villages: updatedVillages, tick: tickNum, gridSize, log: fullLog };
+  return { entities, animals, trees, houses, biomes, villages: updatedVillages, tick: tickNum, gridSize, log: fullLog };
 }

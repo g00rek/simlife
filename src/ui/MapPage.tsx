@@ -54,7 +54,7 @@ export function MapPage() {
     for (let y = 0; y < biomes.length; y++)
       for (let x = 0; x < (biomes[y]?.length ?? 0); x++)
         if (biomes[y][x] === 'forest')
-          t.push({ id: `t${x}_${y}`, position: { x, y }, chopped: false, fruiting: false, hasFruit: false });
+          t.push({ id: `t${x}_${y}`, position: { x, y }, chopped: false, fruiting: false, hasFruit: false, fruitPortions: 0 });
     return t;
   }, [biomes]);
 

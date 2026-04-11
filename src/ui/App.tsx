@@ -149,7 +149,7 @@ export function App() {
       ``,
       `--- WORLD STATE AT EXTINCTION ---`,
       `Animals remaining: ${world.animals.length}`,
-      `Plants remaining: ${world.plants.length}`,
+      `Fruit trees: ${world.trees.filter(t => t.fruiting).length}`,
       ``,
       `--- FULL LOG ---`,
       ...log.map(e => {

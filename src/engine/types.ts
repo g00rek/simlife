@@ -88,18 +88,6 @@ export const ANIMAL_HUNT_MIN_POPULATION = 12; // preserve a breeding population
 export const ANIMAL_FLEE_RANGE = 1;      // animals flee humans within this range
 export const HUNT_KILL_RANGE = 3;       // bow range — instant kill within this distance
 
-export interface Plant {
-  id: string;
-  position: Position;
-  portions: number;  // harvestable portions (0 = depleted)
-  maxPortions: number;
-}
-
-export const PLANT_PORTIONS = 5;          // portions per bush
-export const PLANT_PORTIONS_PER_GATHER = 10; // portions moved to pantry per successful gather
-export const PLANT_SEASON_REGROW = true;  // regrow in summer
-export const PLANT_SPRING_FRUIT_CHANCE = 0.4;
-
 export interface Tree {
   id: string;
   position: Position;
@@ -107,7 +95,10 @@ export interface Tree {
   choppedAt?: number;   // tick when chopped
   fruiting: boolean;    // true = fruit tree (can bear fruit)
   hasFruit: boolean;    // true = fruit ready to pick
+  fruitPortions: number; // harvestable fruit portions (0 = empty, up to TREE_FRUIT_PORTIONS)
 }
+
+export const TREE_FRUIT_PORTIONS = 5;    // max fruit portions per fruiting tree
 
 export const TREE_REGROW_TICKS = 7200; // ~3 years for chopped tree to regrow
 export const FOREST_REGROW_TIME = 7200; // legacy alias
@@ -157,13 +148,9 @@ export const FOOD_RESERVE_PER_PERSON = 4;
 export const FOOD_RESERVE_MIN = 30;
 export const FOOD_RESERVE_MAX = 120;
 export const PLANT_RESERVE_MIN = 20;
-export const PLANT_DETECTION_MULTIPLIER = 3;
 
 // Resources — base values tuned for 30×30 (900 tiles)
 export const ANIMAL_COUNT = 8;
-export const PLANT_COUNT = 8;
-export const PLANT_MAX = 300;
-export const PLANT_RESPAWN_INTERVAL = 100; // new plant every ~5 days
 
 // Scale a base value proportionally to map area. Reference: 30×30 = 900 tiles.
 // Returns at least `floor` (default 1).
@@ -199,7 +186,6 @@ export interface LogEntry {
   detail?: string;
 }
 
-export const FOREST_PLANT_BONUS = 1; // extra plant spawns in forest per interval
 export const FOREST_SPEED_PENALTY = 1; // reduce steps by this in forest
 
 export const NEAR_HOME_RANGE = 2; // manhattan distance to consider "near settlement"
@@ -207,7 +193,6 @@ export const NEAR_HOME_RANGE = 2; // manhattan distance to consider "near settle
 export interface WorldState {
   entities: Entity[];
   animals: Animal[];
-  plants: Plant[];
   trees: Tree[];
   houses: House[];
   biomes: Biome[][];

@@ -77,6 +77,9 @@ export function drawWaterLayer(
 // Tree canopy: 32×32px sprites, drawn at ~2× cell size, overlapping neighbors
 const TREE_NORMAL = { sx: 64, sy: 408, sw: 32, sh: 32 };
 const TREE_FRUIT_EMPTY = { sx: 160, sy: 488, sw: 32, sh: 32 }; // fruit tree, no fruit (green/bare)
+// Fruit tree with fruit: 8×8 sprites, two variants picked by position hash
+const TREE_FRUIT_A = { sx: 160, sy: 448, sw: 8, sh: 8 };
+const TREE_FRUIT_B = { sx: 184, sy: 472, sw: 8, sh: 8 };
 
 export function drawTreeLayer(
   ctx: CanvasRenderingContext2D,
@@ -93,11 +96,22 @@ export function drawTreeLayer(
   const sorted = [...trees].filter(t => !t.chopped).sort((a, b) => a.position.y - b.position.y);
 
   for (const tree of sorted) {
-    const src = tree.fruiting ? TREE_FRUIT_EMPTY : TREE_NORMAL;
-    const px = tree.position.x * cellSize + Math.round((cellSize - drawSize) / 2);
-    const py = tree.position.y * cellSize; // top of sprite = top of cell, trunk extends below
-    ctx.drawImage(overworld, src.sx, src.sy, src.sw, src.sh,
-      px, py, drawSize, drawSize);
+    if (tree.hasFruit && tree.fruitPortions > 0) {
+      // Fruit tree with fruit: use 8x8 sprite at full cell size, centered
+      const variant = tileHash(tree.position.x, tree.position.y, 42) < 0.5 ? TREE_FRUIT_A : TREE_FRUIT_B;
+      const dstW = cellSize;
+      const dstH = cellSize;
+      const px = tree.position.x * cellSize + Math.round((cellSize - dstW) / 2);
+      const py = tree.position.y * cellSize + Math.round((cellSize - dstH) / 2);
+      ctx.drawImage(overworld, variant.sx, variant.sy, variant.sw, variant.sh,
+        px, py, Math.round(dstW), Math.round(dstH));
+    } else {
+      const src = tree.fruiting ? TREE_FRUIT_EMPTY : TREE_NORMAL;
+      const px = tree.position.x * cellSize + Math.round((cellSize - drawSize) / 2);
+      const py = tree.position.y * cellSize; // top of sprite = top of cell, trunk extends below
+      ctx.drawImage(overworld, src.sx, src.sy, src.sw, src.sh,
+        px, py, drawSize, drawSize);
+    }
   }
 }
 

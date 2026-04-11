@@ -1,4 +1,4 @@
-import type { Entity, EntityGoal, Position, Animal, Plant, House, Village, Biome, Gender } from './types';
+import type { Entity, EntityGoal, Position, Animal, Tree, House, Village, Biome, Gender } from './types';
 import {
   CHILD_AGE,
   ANIMAL_HUNT_MIN_POPULATION, scaled,
@@ -6,7 +6,6 @@ import {
   FOOD_RESERVE_MIN,
   FOOD_RESERVE_PER_PERSON,
   HUNGER_THRESHOLD,
-  PLANT_DETECTION_MULTIPLIER,
   PLANT_RESERVE_MIN,
   TICKS_PER_DAY,
   DAY_TICKS,
@@ -48,7 +47,7 @@ export interface AIContext {
   homeTarget?: Position;
   isNight: boolean;
   nearestAnimal?: { pos: Position; dist: number };
-  nearestPlant?: { pos: Position; dist: number };
+  nearestFruitTree?: { pos: Position; dist: number };
   nearestForest?: { pos: Position; dist: number };
   villageNeedsHouses: boolean;
   nearestBuildSite?: { pos: Position; dist: number };
@@ -77,7 +76,7 @@ function survivalForageAction(ctx: AIContext, survivalScore: number): AIAction |
   if (survivalScore === 0) return undefined;
 
   // Nearest food source — plant first (both genders), then hunt for males
-  if (ctx.nearestPlant) return { type: 'go_gather', target: ctx.nearestPlant.pos };
+  if (ctx.nearestFruitTree) return { type: 'go_gather', target: ctx.nearestFruitTree.pos };
   if (ctx.entity.gender === 'male' && ctx.nearestAnimal
       && ctx.animalPopulation > scaled(ANIMAL_HUNT_MIN_POPULATION, ctx.gridSize, 2)) {
     return { type: 'go_hunt', target: ctx.nearestAnimal.pos };
@@ -220,8 +219,8 @@ export function decideAction(ctx: AIContext): AIAction {
   // Gather — go directly to target
   const gatherScore = scoreGather(ctx);
   if (gatherScore > 0) {
-    if (ctx.nearestPlant) {
-      scores.push({ key: 'gather', score: gatherScore, action: () => ({ type: 'go_gather', target: ctx.nearestPlant!.pos }) });
+    if (ctx.nearestFruitTree) {
+      scores.push({ key: 'gather', score: gatherScore, action: () => ({ type: 'go_gather', target: ctx.nearestFruitTree!.pos }) });
     } else if (ctx.nearestForest) {
       scores.push({ key: 'gather', score: gatherScore * 0.9, action: () => ({ type: 'go_gather', target: ctx.nearestForest!.pos }) });
     } else {
@@ -275,7 +274,7 @@ export function buildAIContext(
   entity: Entity,
   villages: Village[],
   animals: Animal[],
-  plants: Plant[],
+  trees: Tree[],
   entities: Entity[],
   biomes: Biome[][],
   gridSize: number,
@@ -315,14 +314,14 @@ export function buildAIContext(
     }
   }
 
-  // Find nearest mature plant
-  let nearestPlant: AIContext['nearestPlant'];
-  const plantSense = sense * PLANT_DETECTION_MULTIPLIER;
-  for (const p of plants) {
-    if (p.portions <= 0) continue;
-    const d = Math.abs(p.position.x - entity.position.x) + Math.abs(p.position.y - entity.position.y);
-    if (d > 0 && d <= plantSense && (!nearestPlant || d < nearestPlant.dist)) {
-      nearestPlant = { pos: p.position, dist: d };
+  // Find nearest fruit tree with available fruit
+  let nearestFruitTree: AIContext['nearestFruitTree'];
+  const fruitSense = sense * 3; // fruit trees visible from further away
+  for (const t of trees) {
+    if (!t.hasFruit || t.fruitPortions <= 0) continue;
+    const d = Math.abs(t.position.x - entity.position.x) + Math.abs(t.position.y - entity.position.y);
+    if (d > 0 && d <= fruitSense && (!nearestFruitTree || d < nearestFruitTree.dist)) {
+      nearestFruitTree = { pos: t.position, dist: d };
     }
   }
 
@@ -390,7 +389,7 @@ export function buildAIContext(
     homeTarget,
     isNight,
     nearestAnimal,
-    nearestPlant,
+    nearestFruitTree,
     nearestForest,
     villageNeedsHouses,
     nearestBuildSite,

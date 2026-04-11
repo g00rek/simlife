@@ -29,7 +29,7 @@ for (let t = 0; t < TICKS; t++) {
 
     // Show what each entity is doing
     for (const e of world.entities) {
-      const ctx = buildAIContext(e, world.villages, world.animals, world.plants, world.entities, world.biomes, world.gridSize, 0, world.houses);
+      const ctx = buildAIContext(e, world.villages, world.animals, world.trees, world.entities, world.biomes, world.gridSize, 0, world.houses);
       const scores = getScores(ctx);
       const action = decideAction(ctx);
       const topScore = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
@@ -50,7 +50,7 @@ for (let t = 0; t < TICKS; t++) {
 console.log('=== FINAL STATE ===');
 console.log(`Tick: ${world.tick}, Year: ${Math.floor(world.tick / TICKS_PER_YEAR)}`);
 console.log(`Population: ${world.entities.length}`);
-console.log(`Animals: ${world.animals.length}, Plants: ${world.plants.length}`);
+console.log(`Animals: ${world.animals.length}, Fruit trees: ${world.trees.filter(t => t.fruiting).length}`);
 console.log(`Houses: ${world.houses.length}`);
 if (world.villages[0]) {
   console.log(`Pantry: meat=${world.villages[0].meatStore} plant=${world.villages[0].plantStore}`);

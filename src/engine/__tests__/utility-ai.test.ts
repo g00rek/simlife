@@ -58,20 +58,20 @@ function makeContext(overrides: Partial<AIContext> = {}): AIContext {
 
 describe('decideAction gather behavior', () => {
   it('female away from home with no visible plants wanders to search', () => {
-    const action = decideAction(makeContext({ nearHome: false, nearestPlant: undefined }));
+    const action = decideAction(makeContext({ nearHome: false, nearestFruitTree: undefined }));
     expect(action.type).toBe('wander');
   });
 
   it('female near home goes directly to gather when pantry needs plants', () => {
     const action = decideAction(makeContext({
       nearHome: true,
-      nearestPlant: { pos: { x: 8, y: 5 }, dist: 3 },
+      nearestFruitTree: { pos: { x: 8, y: 5 }, dist: 3 },
     }));
     expect(action.type).toBe('go_gather');
   });
 
   it('female near home wanders when pantry needs plants but no target visible', () => {
-    const action = decideAction(makeContext({ nearHome: true, nearestPlant: undefined }));
+    const action = decideAction(makeContext({ nearHome: true, nearestFruitTree: undefined }));
     expect(action.type).toBe('wander');
   });
 
@@ -92,7 +92,7 @@ describe('decideAction gather behavior', () => {
     expect(action.type).toBe('play');
   });
 
-  it('detects fruiting plants beyond normal perception range', () => {
+  it('detects fruit trees beyond normal perception range', () => {
     const entity = makeEntity({
       position: { x: 5, y: 5 },
       traits: {
@@ -103,7 +103,6 @@ describe('decideAction gather behavior', () => {
         aggression: 3,
         fertility: 1.0,
         twinChance: 0,
-  
       },
     });
     const village = {
@@ -119,13 +118,13 @@ describe('decideAction gather behavior', () => {
       entity,
       [village],
       [],
-      [{ id: 'p1', position: { x: 13, y: 5 }, portions: 1, maxPortions: 5 }],
+      [{ id: 't1', position: { x: 13, y: 5 }, chopped: false, fruiting: true, hasFruit: true, fruitPortions: 3 }],
       [entity],
       biomes,
       20,
     );
 
-    expect(ctx.nearestPlant?.dist).toBe(8);
+    expect(ctx.nearestFruitTree?.dist).toBe(8);
   });
 });
 
@@ -169,7 +168,7 @@ describe('decideAction hunt behavior', () => {
         }),
         nearHome: false,
         nearestAnimal: undefined,
-        nearestPlant: { pos: { x: 7, y: 5 }, dist: 2 },
+        nearestFruitTree: { pos: { x: 7, y: 5 }, dist: 2 },
       }),
     );
     expect(action.type).toBe('go_gather');
@@ -278,7 +277,7 @@ describe('role-based scoring', () => {
   it('male decideAction never returns gather', () => {
     const ctx = makeContext({
       entity: makeEntity({ gender: 'male', energy: 80 }),
-      nearestPlant: { pos: { x: 6, y: 5 }, dist: 1 },
+      nearestFruitTree: { pos: { x: 6, y: 5 }, dist: 1 },
     });
     const action = decideAction(ctx);
     expect(action.type).not.toBe('go_gather');

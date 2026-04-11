@@ -22,7 +22,7 @@ export function TilePanel({ tile, world, onSelectEntity, onClose }: TilePanelPro
   const biome = world.biomes[tile.y]?.[tile.x] ?? 'unknown';
   const stockpileVillage = world.villages.find(v => v.stockpile?.x === tile.x && v.stockpile?.y === tile.y);
   const house = world.houses.find(h => h.position.x === tile.x && h.position.y === tile.y);
-  const plant = world.plants.find(p => p.position.x === tile.x && p.position.y === tile.y);
+  const fruitTree = world.trees.find(t => t.fruiting && t.position.x === tile.x && t.position.y === tile.y);
   const animal = world.animals.find(a => a.position.x === tile.x && a.position.y === tile.y);
   const entities = world.entities.filter(e => e.position.x === tile.x && e.position.y === tile.y);
 
@@ -70,13 +70,13 @@ export function TilePanel({ tile, world, onSelectEntity, onClose }: TilePanelPro
         </div>
       )}
 
-      {plant && (
+      {fruitTree && (
         <div style={sectionStyle}>
-          <div style={{ fontSize: '12px', color: plant.portions > 0 ? '#e53935' : '#4caf50', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <div style={{ fontSize: '12px', color: fruitTree.fruitPortions > 0 ? '#e53935' : '#4caf50', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
             <Leaf size={12} />
-            Plant
+            Fruit Tree
             <span style={{ color: '#888', marginLeft: '6px', fontSize: '10px' }}>
-              {plant.portions}/{plant.maxPortions} portions
+              {fruitTree.fruitPortions}/{5} portions
             </span>
           </div>
         </div>
@@ -120,7 +120,7 @@ export function TilePanel({ tile, world, onSelectEntity, onClose }: TilePanelPro
         </div>
       )}
 
-      {!stockpileVillage && !house && !plant && !animal && entities.length === 0 && (
+      {!stockpileVillage && !house && !fruitTree && !animal && entities.length === 0 && (
         <div style={{ fontSize: '11px', color: '#444', marginTop: '4px' }}>Empty tile</div>
       )}
     </div>

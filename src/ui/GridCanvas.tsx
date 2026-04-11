@@ -225,56 +225,6 @@ function drawStockpileSprite(
   ctx.drawImage(sprites.structures, srcX, 504, 8, 8, Math.round(x), Math.round(y - dstH), Math.round(dstW), Math.round(dstH));
 }
 
-function drawPlant(ctx: CanvasRenderingContext2D, cx: number, cy: number, cellSize: number, hasFruit: boolean) {
-  const stemH = cellSize * 0.2;
-  ctx.strokeStyle = '#2e7d32';
-  ctx.lineWidth = Math.max(1, cellSize * 0.05);
-  ctx.beginPath();
-  ctx.moveTo(cx, cy + cellSize * 0.22);
-  ctx.lineTo(cx, cy + cellSize * 0.22 - stemH);
-  ctx.stroke();
-
-  ctx.fillStyle = hasFruit ? '#4caf50' : '#3a8f46';
-  ctx.beginPath();
-  ctx.arc(cx, cy + cellSize * 0.08, cellSize * 0.18, 0, Math.PI * 2);
-  ctx.fill();
-
-  if (hasFruit) {
-    ctx.fillStyle = '#e64545';
-    ctx.beginPath();
-    ctx.arc(cx - cellSize * 0.09, cy + cellSize * 0.08, cellSize * 0.05, 0, Math.PI * 2);
-    ctx.arc(cx + cellSize * 0.1, cy + cellSize * 0.05, cellSize * 0.045, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function drawPlantSprite(
-  ctx: CanvasRenderingContext2D,
-  sprites: SpriteAssets,
-  cx: number,
-  cy: number,
-  cellSize: number,
-  season: Season,
-  hasFruit: boolean,
-) {
-  const frameBySeason: Record<Season, { sx: number; sy: number }> = {
-    winter: { sx: 0, sy: 736 },
-    spring: { sx: 48, sy: 736 },
-    summer: { sx: 48, sy: 736 },
-    autumn: { sx: 144, sy: 736 },
-  };
-  const fruitFrame = { sx: 96, sy: 736 };
-  const frame = hasFruit ? fruitFrame : frameBySeason[season];
-  const srcW = 8;
-  const srcH = 8;
-  const dstW = cellSize * 0.92;
-  const dstH = cellSize * 0.92;
-  const dx = Math.round(cx - dstW / 2);
-  const dy = Math.round(cy - dstH / 2);
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(sprites.overworld, frame.sx, frame.sy, srcW, srcH, dx, dy, Math.round(dstW), Math.round(dstH));
-}
-
 function drawRoadTileSprite(
   ctx: CanvasRenderingContext2D,
   sprites: SpriteAssets,
@@ -533,15 +483,6 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       else drawHouse(ctx, hx, hy, cellSize, [r, g, b]);
     }
 
-    // --- Draw plants (red = has fruit, green = depleted) ---
-    for (const plant of world.plants) {
-      const cx = plant.position.x * cellSize + cellSize / 2;
-      const cy = plant.position.y * cellSize + cellSize / 2;
-      const hasFruit = plant.portions > 0;
-      if (sprites) drawPlantSprite(ctx, sprites, cx, cy, cellSize, season, hasFruit);
-      else drawPlant(ctx, cx, cy, cellSize, hasFruit);
-    }
-
     // --- Draw animals (interpolated) ---
     for (const animal of world.animals) {
       const prev = prevAnimalPos.current.get(animal.id) ?? animal.position;
@@ -682,16 +623,16 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
           ctx.stroke();
         }
       } else {
-        // Find nearest mature plant in range
+        // Find nearest fruit tree in range
         let bestD = sense + 1;
         let tx = -1, ty = -1;
-        for (const p of world.plants) {
-          if (p.portions <= 0) continue;
-          const d = Math.abs(p.position.x - entity.position.x) + Math.abs(p.position.y - entity.position.y);
+        for (const t of world.trees) {
+          if (!t.hasFruit || t.fruitPortions <= 0) continue;
+          const d = Math.abs(t.position.x - entity.position.x) + Math.abs(t.position.y - entity.position.y);
           if (d > 0 && d <= sense && d < bestD) {
             bestD = d;
-            tx = p.position.x * cellSize + cellSize / 2;
-            ty = p.position.y * cellSize + cellSize / 2;
+            tx = t.position.x * cellSize + cellSize / 2;
+            ty = t.position.y * cellSize + cellSize / 2;
           }
         }
         if (tx >= 0) {

@@ -117,7 +117,7 @@ export function EntityPanel({ entity, world, onClose }: EntityPanelProps) {
         <span>{entity.position.x},{entity.position.y}</span>
       </div>
       {(() => {
-        const ctx = buildAIContext(entity, world.villages, world.animals, world.plants, world.entities, world.biomes, world.gridSize, 0, world.houses);
+        const ctx = buildAIContext(entity, world.villages, world.animals, world.trees, world.entities, world.biomes, world.gridSize, 0, world.houses);
         const scores = getScores(ctx);
         const action = decideAction(ctx);
         return (

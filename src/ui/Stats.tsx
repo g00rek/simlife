@@ -108,7 +108,7 @@ export function Stats({ world }: StatsProps) {
           <span style={{ color: '#8d6e63', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Rabbit size={12} />{world.animals.length} animals</span>
         </div>
         <div style={{ fontSize: '12px', marginTop: '2px' }}>
-          <span style={{ color: '#4caf50', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Leaf size={12} />{world.plants.length} plants</span>
+          <span style={{ color: '#4caf50', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Leaf size={12} />{world.trees.filter(t => t.fruiting).length} fruit trees</span>
         </div>
       </div>
       <div style={panelStyle}>
