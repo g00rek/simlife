@@ -1,10 +1,10 @@
 import { createWorld, tick } from './world';
 import { TICKS_PER_YEAR } from './types';
 
-const RUNS = 10;
-const MAX_TICKS = 24000; // 10 years
-const GRID = 20;
-const ENTITIES = 2;
+const RUNS = 20;
+const MAX_TICKS = 48000; // 20 years
+const GRID = 10;
+const ENTITIES = 4;
 const VILLAGES = 1;
 
 interface RunResult {
@@ -76,7 +76,7 @@ for (let r = 0; r < RUNS; r++) {
 }
 
 // Summary
-console.log('=== BATCH RESULTS (10 runs, 20x20, 1 village, 2 adults, 10 years max) ===\n');
+console.log(`=== BATCH RESULTS (${RUNS} runs, ${GRID}x${GRID}, 1 village, ${ENTITIES} adults, 20 years max) ===\n`);
 
 for (const r of results) {
   const status = r.extinctTick ? `EXTINCT Y${r.extinctYear} (tick ${r.extinctTick})` : `ALIVE pop=${r.finalPop}`;

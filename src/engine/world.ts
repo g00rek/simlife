@@ -412,7 +412,7 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     }
   }
 
-  const animalCount = scaled(ANIMAL_COUNT, gridSize, 2);
+  const animalCount = scaled(ANIMAL_COUNT, gridSize, 4);
   const animals: Animal[] = [];
   for (let i = 0; i < animalCount; i++) {
     animals.push({
@@ -1036,7 +1036,6 @@ export function tick(state: WorldState): WorldState {
             } else if (goalType === 'build') {
               const v = getVillage(entity.tribe);
               if (v && v.woodStore >= HOUSE_WOOD_COST
-                  && !isRoadTile(entity.position, biomes)
                   && !hasStructureAt(entity.position, houses, updatedVillages)) {
                 v.woodStore -= HOUSE_WOOD_COST;
                 entity = { ...entity, state: 'building' as const, stateTimer: BUILDING_DURATION, goal: undefined };

@@ -34,6 +34,7 @@ export type AIAction =
   | { type: 'eat' }
   | { type: 'go_chop'; target: Position }
   | { type: 'go_hunt'; target: Position }
+  | { type: 'go_build'; target: Position }
   | { type: 'return_home' }
   | { type: 'go_gather'; target: Position }
   | { type: 'wander' }
@@ -50,6 +51,7 @@ export interface AIContext {
   nearestPlant?: { pos: Position; dist: number };
   nearestForest?: { pos: Position; dist: number };
   villageNeedsHouses: boolean;
+  nearestBuildSite?: { pos: Position; dist: number };
   tribePopulation: number;
   animalPopulation: number;
   gridSize: number;
@@ -107,10 +109,12 @@ function scoreBuildHome(ctx: AIContext): number {
 function scoreChopFirewood(ctx: AIContext): number {
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (!ctx.village) return 0;
-  const WOOD_MAX = 30;
-  if (ctx.village.woodStore >= WOOD_MAX) return 0;
-  const woodNeed = (WOOD_MAX - ctx.village.woodStore) / WOOD_MAX;
-  return woodNeed * 0.5; // lower priority than hunting
+  // Only chop if village actually needs wood (for building houses)
+  if (!ctx.villageNeedsHouses && ctx.village.woodStore >= 5) return 0;
+  const woodTarget = ctx.villageNeedsHouses ? 10 : 5; // enough for 1-2 houses
+  if (ctx.village.woodStore >= woodTarget) return 0;
+  const woodNeed = (woodTarget - ctx.village.woodStore) / woodTarget;
+  return woodNeed * 0.5;
 }
 
 function scoreHunt(ctx: AIContext): number {
@@ -193,13 +197,13 @@ export function decideAction(ctx: AIContext): AIAction {
     scores.push({ key: 'survival', score: survScore, action: () => survivalAction });
   }
 
-  // Build home — go near houses first, then play to find build spot
+  // Build home — go to nearest valid build site
   const buildScore = scoreBuildHome(ctx);
   if (buildScore > 0) {
-    if (!ctx.nearHome) {
+    if (ctx.nearestBuildSite) {
+      scores.push({ key: 'build', score: buildScore, action: () => ({ type: 'go_build', target: ctx.nearestBuildSite!.pos }) });
+    } else if (!ctx.nearHome) {
       scores.push({ key: 'build', score: buildScore, action: () => ({ type: 'return_home' }) });
-    } else {
-      scores.push({ key: 'build', score: buildScore, action: () => ({ type: 'play' }) });
     }
   }
 
@@ -345,6 +349,36 @@ export function buildAIContext(
     : 0;
   const villageNeedsHouses = homelessFemales > freeHouses;
 
+  // Find nearest valid build site (adjacent to existing house/stockpile, passable, not occupied)
+  let nearestBuildSite: AIContext['nearestBuildSite'];
+  if (villageNeedsHouses && village) {
+    const occupiedTiles = new Set<string>();
+    for (const h of houses) occupiedTiles.add(`${h.position.x},${h.position.y}`);
+    if (village.stockpile) occupiedTiles.add(`${village.stockpile.x},${village.stockpile.y}`);
+
+    // Anchor tiles: existing tribe houses or stockpile
+    const anchors: Position[] = tribeHouses.map(h => h.position);
+    if (anchors.length === 0 && village.stockpile) anchors.push(village.stockpile);
+
+    // Search within distance 2 of anchors for valid build sites
+    for (const anchor of anchors) {
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = anchor.x + dx, ny = anchor.y + dy;
+          if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) continue;
+          const biome = biomes[ny][nx];
+          if (biome === 'water' || biome === 'mountain') continue;
+          if (occupiedTiles.has(`${nx},${ny}`)) continue;
+          const d = Math.abs(nx - entity.position.x) + Math.abs(ny - entity.position.y);
+          if (!nearestBuildSite || d < nearestBuildSite.dist) {
+            nearestBuildSite = { pos: { x: nx, y: ny }, dist: d };
+          }
+        }
+      }
+    }
+  }
+
   const isNight = (tick % TICKS_PER_DAY) >= DAY_TICKS;
   const tribePopulation = village
     ? entities.filter(e => e.tribe === village.tribe).length
@@ -359,6 +393,7 @@ export function buildAIContext(
     nearestPlant,
     nearestForest,
     villageNeedsHouses,
+    nearestBuildSite,
     tribePopulation,
     animalPopulation: animals.length,
     gridSize,
@@ -386,6 +421,7 @@ function actionToKey(action: AIAction): string {
     case 'go_hunt': return 'hunt';
     case 'go_gather': return 'gather';
     case 'go_chop': return 'chop';
+    case 'go_build': return 'build';
     case 'return_home': return 'return_home';
     case 'play': return 'play';
     case 'rest': return 'rest';
@@ -425,6 +461,7 @@ export function actionToGoal(action: AIAction, ctx: AIContext): EntityGoal | und
     case 'go_hunt': return { type: 'hunt', target: action.target };
     case 'go_gather': return { type: 'gather', target: action.target };
     case 'go_chop': return { type: 'chop', target: action.target };
+    case 'go_build': return { type: 'build', target: action.target };
     case 'return_home': return ctx.homeTarget ? { type: 'return_home', target: ctx.homeTarget } : undefined;
     default: return undefined;
   }
