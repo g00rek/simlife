@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Axe, BowlFood, Hammer, Leaf, Lightning, Moon, PersonSimpleRun, ShieldWarning, Sun, Sword } from '@phosphor-icons/react';
 
 const MINI_MEDIEVAL_BASE = '/assets/mini-medieval/Mini-Medieval-8x8';
 const UNITS = `${MINI_MEDIEVAL_BASE}/Units.png`;
@@ -177,85 +176,75 @@ export function SlashIconsPage() {
         Tu jest finalna, wybrana lista sprite’ów. Jeśli chcesz zmiany, podaj ID z tej listy albo wybierz nowe ID z `/library`.
       </p>
 
+      {/* ── People Animations ── */}
       <section style={sectionStyle}>
-        <h2 style={h2Style}>Terrain Colors</h2>
-        <div style={terrainWrapStyle}>
-          <div style={{ ...terrainTileStyle, background: '#7e9432' }}><span>plains</span></div>
-          <div style={{ ...terrainTileStyle, background: '#56642e' }}><span>forest</span></div>
-          <div style={{ ...terrainTileStyle, background: '#6f6e72' }}><span>mountain</span></div>
-          <div style={{ ...terrainTileStyle, background: '#2a7d75' }}><span>water</span></div>
-          <div style={{ ...terrainTileStyle, background: '#c78539' }}><span>road</span></div>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>People (Map)</h2>
-        <Row name="male red" id="Units.png|0,32,8,8" preview={<MapSpritePreview src={UNITS} sx={0} sy={32} sw={8} sh={8} wFrac={0.82} hFrac={0.82} />} />
-        <Row name="male blue" id="Units.png|0,64,8,8" preview={<MapSpritePreview src={UNITS} sx={0} sy={64} sw={8} sh={8} wFrac={0.82} hFrac={0.82} />} />
-        <Row name="male green" id="Units.png|0,56,8,8" preview={<MapSpritePreview src={UNITS} sx={0} sy={56} sw={8} sh={8} wFrac={0.82} hFrac={0.82} />} />
-        <Row name="female red" id="Units.png|0,96,8,8" preview={<MapSpritePreview src={UNITS} sx={0} sy={96} sw={8} sh={8} wFrac={0.82} hFrac={0.82} />} />
-        <Row name="female blue" id="Units.png|0,128,8,8" preview={<MapSpritePreview src={UNITS} sx={0} sy={128} sw={8} sh={8} wFrac={0.82} hFrac={0.82} />} />
-        <Row name="female green" id="Units.png|8,120,8,8" preview={<MapSpritePreview src={UNITS} sx={8} sy={120} sw={8} sh={8} wFrac={0.82} hFrac={0.82} />} />
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>People Idle Animation (3 frames)</h2>
+        <h2 style={h2Style}>People — Idle (3 frames)</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 32 }))} label="male red idle" />
-          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 64 }))} label="male blue idle" />
-          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 56 }))} label="male green idle" />
-          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 96 }))} label="female red idle" />
-          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 128 }))} label="female blue idle" />
-          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 120 }))} label="female green idle" />
+          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 32 }))} label="male red" />
+          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 64 }))} label="male blue" />
+          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 56 }))} label="male green" />
+          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 96 }))} label="female red" />
+          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 128 }))} label="female blue" />
+          <SpriteAnimation src={UNITS} frames={[24,32,40].map(sx => ({ sx, sy: 120 }))} label="female green" />
         </div>
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={h2Style}>People Walk Animation (4 frames)</h2>
+        <h2 style={h2Style}>People — Walk (4 frames)</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 32 }))} label="male red walk" />
-          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 64 }))} label="male blue walk" />
-          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 56 }))} label="male green walk" />
-          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 96 }))} label="female red walk" ms={150} />
-          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 128 }))} label="female blue walk" ms={150} />
-          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 120 }))} label="female green walk" ms={150} />
+          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 32 }))} label="male red" />
+          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 64 }))} label="male blue" />
+          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 56 }))} label="male green" />
+          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 96 }))} label="female red" ms={150} />
+          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 128 }))} label="female blue" ms={150} />
+          <SpriteAnimation src={UNITS} frames={[152,160,168,176].map(sx => ({ sx, sy: 120 }))} label="female green" ms={150} />
         </div>
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={h2Style}>People Run Animation (4 frames)</h2>
+        <h2 style={h2Style}>People — Run (4 frames)</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 32 }))} label="male red run" ms={120} />
-          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 64 }))} label="male blue run" ms={120} />
-          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 56 }))} label="male green run" ms={120} />
-          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 96 }))} label="female red run" ms={120} />
-          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 128 }))} label="female blue run" ms={120} />
-          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 120 }))} label="female green run" ms={120} />
+          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 32 }))} label="male red" ms={120} />
+          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 64 }))} label="male blue" ms={120} />
+          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 56 }))} label="male green" ms={120} />
+          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 96 }))} label="female red" ms={120} />
+          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 128 }))} label="female blue" ms={120} />
+          <SpriteAnimation src={UNITS} frames={[80,88,96,104].map(sx => ({ sx, sy: 120 }))} label="female green" ms={120} />
         </div>
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={h2Style}>People March Animation (4 frames)</h2>
+        <h2 style={h2Style}>People — March (4 frames)</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 32 }))} label="male red march" ms={180} />
-          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 64 }))} label="male blue march" ms={180} />
-          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 56 }))} label="male green march" ms={180} />
-          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 96 }))} label="female red march" ms={180} />
-          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 128 }))} label="female blue march" ms={180} />
-          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 120 }))} label="female green march" ms={180} />
+          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 32 }))} label="male red" ms={180} />
+          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 64 }))} label="male blue" ms={180} />
+          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 56 }))} label="male green" ms={180} />
+          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 96 }))} label="female red" ms={180} />
+          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 128 }))} label="female blue" ms={180} />
+          <SpriteAnimation src={UNITS} frames={[224,232,240,248].map(sx => ({ sx, sy: 120 }))} label="female green" ms={180} />
         </div>
-        <div style={{ marginTop: 8, fontSize: 11, color: '#666' }}>
-          All 4 frames shown individually:
-        </div>
-        <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-          {[152,160,168,176].map(sx => (
-            <MapSpritePreview key={sx} src={UNITS} sx={sx} sy={32} sw={8} sh={8} wFrac={1} hFrac={1} />
-          ))}
+      </section>
+
+      {/* ── Animals ── */}
+      <section style={sectionStyle}>
+        <h2 style={h2Style}>Animals — Idle (2 frames)</h2>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <SpriteAnimation src={ANIMALS} frames={[{sx:0,sy:464},{sx:8,sy:464}]} label="female idle" />
+          <SpriteAnimation src={ANIMALS} frames={[{sx:0,sy:472},{sx:8,sy:472}]} label="male idle" />
         </div>
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={h2Style}>Houses 3×3 (New)</h2>
+        <h2 style={h2Style}>Animals — Run (2 frames)</h2>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <SpriteAnimation src={ANIMALS} frames={[{sx:80,sy:464},{sx:88,sy:464}]} label="female run" ms={120} />
+          <SpriteAnimation src={ANIMALS} frames={[{sx:80,sy:472},{sx:88,sy:472}]} label="male run" ms={120} />
+        </div>
+      </section>
+
+      {/* ── Houses ── */}
+      <section style={sectionStyle}>
+        <h2 style={h2Style}>Houses 3×3</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ textAlign: 'center' }}>
             <CompositeSprite cols={3} tiles={[
@@ -284,41 +273,38 @@ export function SlashIconsPage() {
         </div>
       </section>
 
+      {/* ── Trees & Nature ── */}
       <section style={sectionStyle}>
-        <h2 style={h2Style}>Map Objects (Old)</h2>
-        <Row name="house red" id="Structures.png|0,80,32,40" preview={<MapSpritePreview src={STRUCTURES} sx={0} sy={80} sw={32} sh={40} wFrac={0.5} hFrac={0.62} align="bottom" />} />
-        <Row name="house blue" id="Structures.png|0,48,32,40" preview={<MapSpritePreview src={STRUCTURES} sx={0} sy={48} sw={32} sh={40} wFrac={0.5} hFrac={0.62} align="bottom" />} />
-        <Row name="house green" id="Structures.png|0,0,32,40" preview={<MapSpritePreview src={STRUCTURES} sx={0} sy={0} sw={32} sh={40} wFrac={0.5} hFrac={0.62} align="bottom" />} />
-        <Row name="stockpile" id="Misc.png|0,240,8,8" preview={<MapSpritePreview src={MISC} sx={0} sy={240} sw={8} sh={8} wFrac={0.9} hFrac={0.9} />} />
-        <Row name="tree (normal)" id="Overworld.png|64,408,32,32" preview={<MapSpritePreview src={OVERWORLD} sx={64} sy={408} sw={32} sh={32} wFrac={1} hFrac={1} tileBg="#22301e" />} />
-        <Row name="fruit tree (empty)" id="Overworld.png|160,488,32,32" preview={<MapSpritePreview src={OVERWORLD} sx={160} sy={488} sw={32} sh={32} wFrac={1} hFrac={1} tileBg="#22301e" />} />
-        <Row name="fruit tree (with fruit)" id="Overworld.png|112,488,32,32" preview={<MapSpritePreview src={OVERWORLD} sx={112} sy={488} sw={32} sh={32} wFrac={1} hFrac={1} tileBg="#22301e" />} />
-        <Row name="tree (winter)" id="Overworld.png|64,368,32,32" preview={<MapSpritePreview src={OVERWORLD} sx={64} sy={368} sw={32} sh={32} wFrac={1} hFrac={1} tileBg="#1b2230" />} />
-        <Row name="road tile" id="Overworld.png|32,320,8,8" preview={<MapSpritePreview src={OVERWORLD} sx={32} sy={320} sw={8} sh={8} wFrac={1} hFrac={1} tileBg="#7e9432" />} />
-        <Row name="water base anim" id="Overworld.png|8,104,8,8;frames=2;step=24" preview={<MapSpritePreview src={OVERWORLD} sx={8} sy={104} sw={8} sh={8} wFrac={1} hFrac={1} tileBg="#245a5f" />} />
-        <Row name="water edge N (rotated NESW)" id="Overworld.png|8,120,8,8" preview={<MapSpritePreview src={OVERWORLD} sx={8} sy={120} sw={8} sh={8} wFrac={1} hFrac={1} tileBg="#245a5f" />} />
-        <Row name="water corner outer (rotated)" id="Overworld.png|0,64,8,8" preview={<MapSpritePreview src={OVERWORLD} sx={0} sy={64} sw={8} sh={8} wFrac={1} hFrac={1} tileBg="#245a5f" />} />
-        <Row name="water corner inner (rotated)" id="Overworld.png|136,120,8,8" preview={<MapSpritePreview src={OVERWORLD} sx={136} sy={120} sw={8} sh={8} wFrac={1} hFrac={1} tileBg="#245a5f" />} />
-        <Row name="animal" id="Animals.png|0,472,8,8" preview={<MapSpritePreview src={ANIMALS} sx={0} sy={472} sw={8} sh={8} wFrac={0.86} hFrac={0.86} />} />
+        <h2 style={h2Style}>Trees</h2>
+        <Row name="normal" id="Overworld.png|64,408,32,32" preview={<MapSpritePreview src={OVERWORLD} sx={64} sy={408} sw={32} sh={32} wFrac={1} hFrac={1} tileBg="#22301e" />} />
+        <Row name="winter" id="Overworld.png|64,368,32,32" preview={<MapSpritePreview src={OVERWORLD} sx={64} sy={368} sw={32} sh={32} wFrac={1} hFrac={1} tileBg="#1b2230" />} />
+        <Row name="fruit (empty)" id="Overworld.png|160,488,32,32" preview={<MapSpritePreview src={OVERWORLD} sx={160} sy={488} sw={32} sh={32} wFrac={1} hFrac={1} tileBg="#22301e" />} />
+        <Row name="fruit (with fruit)" id="Overworld.png|112,488,32,32" preview={<MapSpritePreview src={OVERWORLD} sx={112} sy={488} sw={32} sh={32} wFrac={1} hFrac={1} tileBg="#22301e" />} />
+        <Row name="stump" id="Overworld.png|80,720,16,8" preview={<MapSpritePreview src={OVERWORLD} sx={80} sy={720} sw={16} sh={8} wFrac={0.6} hFrac={0.3} />} />
+        <Row name="grass (food)" id="Overworld.png|24,8,8,8" preview={<MapSpritePreview src={OVERWORLD} sx={24} sy={8} sw={8} sh={8} wFrac={0.6} hFrac={0.6} />} />
       </section>
 
+      {/* ── Action Badges ── */}
       <section style={sectionStyle}>
-        <h2 style={h2Style}>Wang Tile Frames (7 animation frames per type)</h2>
+        <h2 style={h2Style}>Action Badges</h2>
+        <Row name="build" id="Walls.png|72,24,8,8" preview={<MapSpritePreview src={`${MINI_MEDIEVAL_BASE}/Walls.png`} sx={72} sy={24} sw={8} sh={8} wFrac={0.8} hFrac={0.8} />} />
+        <Row name="chop" id="Items.png|16,56,8,8" preview={<MapSpritePreview src={`${MINI_MEDIEVAL_BASE}/Items.png`} sx={16} sy={56} sw={8} sh={8} wFrac={0.8} hFrac={0.8} />} />
+        <Row name="fight" id="Items.png|0,16,8,8" preview={<MapSpritePreview src={`${MINI_MEDIEVAL_BASE}/Items.png`} sx={0} sy={16} sw={8} sh={8} wFrac={0.8} hFrac={0.8} />} />
+        <Row name="train" id="Misc.png|0,384,8,8" preview={<MapSpritePreview src={MISC} sx={0} sy={384} sw={8} sh={8} wFrac={0.8} hFrac={0.8} />} />
+        <Row name="hunt" id="Items.png|0,24,8,8" preview={<MapSpritePreview src={`${MINI_MEDIEVAL_BASE}/Items.png`} sx={0} sy={24} sw={8} sh={8} wFrac={0.8} hFrac={0.8} />} />
+        <Row name="gather" id="Items.png|0,160,8,8" preview={<MapSpritePreview src={`${MINI_MEDIEVAL_BASE}/Items.png`} sx={0} sy={160} sw={8} sh={8} wFrac={0.8} hFrac={0.8} />} />
+      </section>
+
+      {/* ── UI ── */}
+      <section style={sectionStyle}>
+        <h2 style={h2Style}>Selection</h2>
+        <Row name="tile select" id="Interface.png|32,8,8,8" preview={<MapSpritePreview src={`${MINI_MEDIEVAL_BASE}/Interface.png`} sx={32} sy={8} sw={8} sh={8} wFrac={1} hFrac={1} />} />
+      </section>
+
+      {/* ── Water (Wang tiles) ── */}
+      <section style={sectionStyle}>
+        <h2 style={h2Style}>Water — Wang Tile Frames</h2>
         <WangFrameTable />
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>UI Action Icons</h2>
-        <div style={uiWrapStyle}>
-          <Sword size={24} /><ShieldWarning size={24} /><PersonSimpleRun size={24} /><Leaf size={24} /><Axe size={24} /><Hammer size={24} />
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>Sidebar Icons</h2>
-        <div style={uiWrapStyle}>
-          <BowlFood size={24} /><Leaf size={24} /><Axe size={24} /><Lightning size={24} /><Sun size={24} /><Moon size={24} />
-        </div>
       </section>
     </main>
   );
@@ -518,27 +504,4 @@ const idStyle: React.CSSProperties = {
   color: '#8e98b3',
 };
 
-const terrainWrapStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '8px',
-  flexWrap: 'wrap',
-};
-
-const terrainTileStyle: React.CSSProperties = {
-  width: '72px',
-  height: '42px',
-  border: '1px solid #2f3648',
-  borderRadius: '8px',
-  display: 'grid',
-  placeItems: 'end center',
-  paddingBottom: '4px',
-  fontSize: '10px',
-  color: '#d8deea',
-};
-
-const uiWrapStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '8px',
-  alignItems: 'center',
-};
 
