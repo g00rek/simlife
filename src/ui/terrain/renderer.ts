@@ -42,17 +42,22 @@ export function drawSurfaceLayer(
   grassDensity: number = 7,
 ) {
   ctx.imageSmoothingEnabled = false;
+  // Fill background to prevent subpixel gaps between tiles
+  ctx.fillStyle = BIOME_COLORS['plains'];
+  ctx.fillRect(0, 0, gridSize * cellSize, gridSize * cellSize);
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       const biome = biomes[y][x];
+      const px = Math.floor(x * cellSize);
+      const py = Math.floor(y * cellSize);
+      const pw = Math.ceil(cellSize + 0.5);
+      const ph = Math.ceil(cellSize + 0.5);
       if (overworld && (biome === 'plains' || biome === 'forest')) {
-        // Sprite variation for grass tiles (forest has same ground)
         const tile = pickPlainsTile(x, y, grassDensity);
-        ctx.drawImage(overworld, tile.sx, tile.sy, 8, 8,
-          x * cellSize, y * cellSize, cellSize, cellSize);
+        ctx.drawImage(overworld, tile.sx, tile.sy, 8, 8, px, py, pw, ph);
       } else {
         ctx.fillStyle = BIOME_COLORS[biome];
-        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        ctx.fillRect(px, py, pw, ph);
       }
     }
   }

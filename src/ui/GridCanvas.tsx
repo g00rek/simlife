@@ -495,7 +495,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       const pos = lerpPos(prev, animal.position, t);
       const cx = pos.x * cellSize + cellSize / 2;
       const cy = pos.y * cellSize + cellSize / 2;
-      const animalFrame = Math.floor(frameCount / 30) % 2; // swap every ~0.5s at 60fps
+      const animalFrame = Math.floor(frameCount / 60) % 2; // swap every ~1s at 60fps
       if (sprites) drawAnimalSprite(ctx, sprites, cx, cy, cellSize, animal.gender, animalFrame);
       else drawAnimal(ctx, cx, cy, cellSize);
     }
