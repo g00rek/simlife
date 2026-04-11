@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildAIContext, decideAction } from '../utility-ai';
+import { buildAIContext, decideAction, getScores, ROLES } from '../utility-ai';
 import type { AIContext } from '../utility-ai';
 import type { Entity } from '../types';
 
@@ -239,5 +239,48 @@ describe('decideAction hunt behavior', () => {
       }),
     );
     expect(action.type).toBe('go_hunt');
+  });
+});
+
+describe('role-based scoring', () => {
+  it('female role does not include hunt/chop/build', () => {
+    const role = ROLES['female'];
+    expect(role.actions['hunt']).toBeUndefined();
+    expect(role.actions['chop']).toBeUndefined();
+    expect(role.actions['build']).toBeUndefined();
+    expect(role.actions['gather']).toBe(1.0);
+  });
+
+  it('male role does not include gather', () => {
+    const role = ROLES['male'];
+    expect(role.actions['gather']).toBeUndefined();
+    expect(role.actions['hunt']).toBe(1.0);
+  });
+
+  it('raw scoring returns nonzero gather for male when village needs food', () => {
+    const ctx = makeContext({
+      entity: makeEntity({ gender: 'male', energy: 80 }),
+    });
+    const scores = getScores(ctx);
+    // getScores returns RAW scores (no role filter), so gather should be > 0
+    expect(scores.gather).toBeGreaterThan(0);
+  });
+
+  it('female decideAction never returns hunt', () => {
+    const ctx = makeContext({
+      entity: makeEntity({ gender: 'female', energy: 80 }),
+      nearestAnimal: { pos: { x: 6, y: 5 }, dist: 1 },
+    });
+    const action = decideAction(ctx);
+    expect(action.type).not.toBe('go_hunt');
+  });
+
+  it('male decideAction never returns gather', () => {
+    const ctx = makeContext({
+      entity: makeEntity({ gender: 'male', energy: 80 }),
+      nearestPlant: { pos: { x: 6, y: 5 }, dist: 1 },
+    });
+    const action = decideAction(ctx);
+    expect(action.type).not.toBe('go_gather');
   });
 });

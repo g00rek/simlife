@@ -1,7 +1,7 @@
-import type { Entity, EntityGoal, Position, Animal, Plant, House, Village, Biome } from './types';
+import type { Entity, EntityGoal, Position, Animal, Plant, House, Village, Biome, Gender } from './types';
 import {
   CHILD_AGE,
-  ANIMAL_HUNT_MIN_POPULATION,
+  ANIMAL_HUNT_MIN_POPULATION, scaled,
   FOOD_RESERVE_MAX,
   FOOD_RESERVE_MIN,
   FOOD_RESERVE_PER_PERSON,
@@ -13,6 +13,20 @@ import {
   NEAR_HOME_RANGE,
 } from './types';
 import { ageInYears } from './world';
+
+// --- Role configuration ---
+export interface RoleConfig {
+  actions: Record<string, number>;
+}
+
+export const ROLES: Record<Gender, RoleConfig> = {
+  female: {
+    actions: { gather: 1.0, return_home: 1.0, rest: 1.0, play: 1.0 }
+  },
+  male: {
+    actions: { hunt: 1.0, chop: 0.7, build: 0.85, return_home: 1.0, rest: 1.0, play: 1.0 }
+  },
+};
 
 // --- Action types ---
 export type AIAction =
@@ -38,6 +52,7 @@ export interface AIContext {
   villageNeedsHouses: boolean;
   tribePopulation: number;
   animalPopulation: number;
+  gridSize: number;
 }
 
 const NIGHT_HUNT_MEAT_THRESHOLD = 20;
@@ -65,7 +80,7 @@ function survivalForageAction(ctx: AIContext, survivalScore: number): AIAction |
   }
 
   if (ctx.entity.gender === 'male'
-      && ctx.animalPopulation > ANIMAL_HUNT_MIN_POPULATION
+      && ctx.animalPopulation > scaled(ANIMAL_HUNT_MIN_POPULATION, ctx.gridSize, 2)
       && ctx.nearestAnimal) {
     return { type: 'go_hunt', target: ctx.nearestAnimal.pos };
   }
@@ -91,7 +106,6 @@ function scoreSurvival(ctx: AIContext): number {
 }
 
 function scoreBuildHome(ctx: AIContext): number {
-  if (ctx.entity.gender !== 'male') return 0;
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (!ctx.villageNeedsHouses) return 0;
   if (!ctx.village || ctx.village.woodStore < 5) return 0; // not enough wood yet → go chop
@@ -99,7 +113,6 @@ function scoreBuildHome(ctx: AIContext): number {
 }
 
 function scoreChopFirewood(ctx: AIContext): number {
-  if (ctx.entity.gender !== 'male') return 0;
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (!ctx.village) return 0;
   const WOOD_MAX = 30;
@@ -109,10 +122,9 @@ function scoreChopFirewood(ctx: AIContext): number {
 }
 
 function scoreHunt(ctx: AIContext): number {
-  if (ctx.entity.gender !== 'male') return 0;
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (!ctx.village) return 0;
-  if (ctx.animalPopulation <= ANIMAL_HUNT_MIN_POPULATION) return 0;
+  if (ctx.animalPopulation <= scaled(ANIMAL_HUNT_MIN_POPULATION, ctx.gridSize, 2)) return 0;
   const target = foodReserveTarget(ctx);
   const totalFood = totalVillageFood(ctx);
   if (totalFood >= target) return 0;
@@ -122,7 +134,6 @@ function scoreHunt(ctx: AIContext): number {
 }
 
 function scoreGather(ctx: AIContext): number {
-  if (ctx.entity.gender !== 'female') return 0;
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (!ctx.village) return 0;
   const target = foodReserveTarget(ctx);
@@ -183,20 +194,20 @@ export function decideAction(ctx: AIContext): AIAction {
   }
 
   // Score all actions
-  const scores: Array<{ score: number; action: () => AIAction }> = [];
+  const scores: Array<{ key: string; score: number; action: () => AIAction }> = [];
 
   // Survival — direct food in the field first; pantry/home is fallback.
   if (survivalAction) {
-    scores.push({ score: survScore, action: () => survivalAction });
+    scores.push({ key: 'survival', score: survScore, action: () => survivalAction });
   }
 
   // Build home — go near houses first, then play to find build spot
   const buildScore = scoreBuildHome(ctx);
   if (buildScore > 0) {
     if (!ctx.nearHome) {
-      scores.push({ score: buildScore, action: () => ({ type: 'return_home' }) });
+      scores.push({ key: 'build', score: buildScore, action: () => ({ type: 'return_home' }) });
     } else {
-      scores.push({ score: buildScore, action: () => ({ type: 'play' }) });
+      scores.push({ key: 'build', score: buildScore, action: () => ({ type: 'play' }) });
     }
   }
 
@@ -204,9 +215,9 @@ export function decideAction(ctx: AIContext): AIAction {
   const huntScore = scoreHunt(ctx);
   if (huntScore > 0) {
     if (ctx.nearestAnimal) {
-      scores.push({ score: huntScore, action: () => ({ type: 'go_hunt', target: ctx.nearestAnimal!.pos }) });
+      scores.push({ key: 'hunt', score: huntScore, action: () => ({ type: 'go_hunt', target: ctx.nearestAnimal!.pos }) });
     } else {
-      scores.push({ score: huntScore * 0.8, action: () => ({ type: 'wander' }) });
+      scores.push({ key: 'hunt', score: huntScore * 0.8, action: () => ({ type: 'wander' }) });
     }
   }
 
@@ -214,11 +225,11 @@ export function decideAction(ctx: AIContext): AIAction {
   const gatherScore = scoreGather(ctx);
   if (gatherScore > 0) {
     if (ctx.nearestPlant) {
-      scores.push({ score: gatherScore, action: () => ({ type: 'go_gather', target: ctx.nearestPlant!.pos }) });
+      scores.push({ key: 'gather', score: gatherScore, action: () => ({ type: 'go_gather', target: ctx.nearestPlant!.pos }) });
     } else if (ctx.nearestForest) {
-      scores.push({ score: gatherScore * 0.9, action: () => ({ type: 'go_gather', target: ctx.nearestForest!.pos }) });
+      scores.push({ key: 'gather', score: gatherScore * 0.9, action: () => ({ type: 'go_gather', target: ctx.nearestForest!.pos }) });
     } else {
-      scores.push({ score: gatherScore * 0.8, action: () => ({ type: 'wander' }) });
+      scores.push({ key: 'gather', score: gatherScore * 0.8, action: () => ({ type: 'wander' }) });
     }
   }
 
@@ -226,25 +237,32 @@ export function decideAction(ctx: AIContext): AIAction {
   const firewoodScore = scoreChopFirewood(ctx);
   if (firewoodScore > 0) {
     if (ctx.nearestForest) {
-      scores.push({ score: firewoodScore, action: () => ({ type: 'go_chop', target: ctx.nearestForest!.pos }) });
+      scores.push({ key: 'chop', score: firewoodScore, action: () => ({ type: 'go_chop', target: ctx.nearestForest!.pos }) });
     } else {
-      scores.push({ score: firewoodScore * 0.8, action: () => ({ type: 'wander' }) });
+      scores.push({ key: 'chop', score: firewoodScore * 0.8, action: () => ({ type: 'wander' }) });
     }
   }
 
   // Return home (low priority default for distant entities)
   const returnScore = scoreReturnHome(ctx);
   if (returnScore > 0) {
-    scores.push({ score: returnScore, action: () => ({ type: 'return_home' }) });
+    scores.push({ key: 'return_home', score: returnScore, action: () => ({ type: 'return_home' }) });
   }
 
   // Default: stroll around settlement
   if (ctx.nearHome) {
-    scores.push({ score: 0.02, action: () => ({ type: 'play' }) });
+    scores.push({ key: 'play', score: 0.02, action: () => ({ type: 'play' }) });
   }
 
   // Absolute fallback
-  scores.push({ score: 0.01, action: () => ({ type: 'rest' }) });
+  scores.push({ key: 'rest', score: 0.01, action: () => ({ type: 'rest' }) });
+
+  // Apply role weights — survival bypasses filter, everything else filtered by role
+  const role = ROLES[e.gender];
+  for (const s of scores) {
+    if (s.key === 'survival') continue; // everyone can forage when starving
+    s.score *= (role.actions[s.key] ?? 0);
+  }
 
   // Pick highest score
   scores.sort((a, b) => b.score - a.score);
@@ -351,6 +369,7 @@ export function buildAIContext(
     villageNeedsHouses,
     tribePopulation,
     animalPopulation: animals.length,
+    gridSize,
   };
 }
 
