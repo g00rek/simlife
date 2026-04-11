@@ -1152,40 +1152,36 @@ export function tick(state: WorldState): WorldState {
     animals.push(...babyAnimals);
   }
 
-  // --- Step 6: Seasonal fruit tree cycle ---
-  // Summer start: all fruiting trees get full fruit.
-  // Spring start: 40% of fruiting trees get fruit.
-  // Winter: all trees lose fruit.
-  // Autumn: fruit stays from summer.
+  // --- Step 6: Gradual seasonal fruit tree cycle ---
+  // Each tick, individual trees have a small chance to transition.
+  // Over a full season (~600 ticks), virtually all trees will have changed.
   const ticksPerMonth = TICKS_PER_DAY * 10;
   const month = Math.floor((tickNum % TICKS_PER_YEAR) / ticksPerMonth);
   const season = Math.floor(month / 3);
   const isWinter = season === 3;
-  const isSpringStart = month === 0 && (tickNum % ticksPerMonth) === 0;
-  const isSummerStart = month === 3 && (tickNum % ticksPerMonth) === 0;
+  const isSpring = season === 0;
+  const isSummer = season === 1;
 
-  if (isWinter) {
-    // Winter: all trees lose fruit
-    trees = trees.map(t => t.hasFruit ? { ...t, fruitPortions: 0, hasFruit: false } : t);
-  }
+  trees = trees.map(t => {
+    if (t.chopped) return t;
 
-  if (isSpringStart) {
-    // Spring: 40% of fruiting trees get fruit
-    trees = trees.map(t =>
-      t.fruiting && !t.chopped && Math.random() < 0.4
-        ? { ...t, fruitPortions: TREE_FRUIT_PORTIONS, hasFruit: true }
-        : t
-    );
-  }
+    if (isWinter && t.hasFruit) {
+      // Gradually lose fruit: ~2% per tick → ~95% bare by end of winter
+      if (Math.random() < 0.02) return { ...t, fruitPortions: 0, hasFruit: false };
+    }
 
-  if (isSummerStart) {
-    // Summer: all fruiting trees get full fruit
-    trees = trees.map(t =>
-      t.fruiting && !t.chopped
-        ? { ...t, fruitPortions: TREE_FRUIT_PORTIONS, hasFruit: true }
-        : t
-    );
-  }
+    if (isSpring && t.fruiting && !t.hasFruit) {
+      // Some trees fruit early: ~0.3% per tick → ~40% by end of spring
+      if (Math.random() < 0.003) return { ...t, fruitPortions: TREE_FRUIT_PORTIONS, hasFruit: true };
+    }
+
+    if (isSummer && t.fruiting && !t.hasFruit) {
+      // Most trees fruit: ~2% per tick → virtually all by mid-summer
+      if (Math.random() < 0.02) return { ...t, fruitPortions: TREE_FRUIT_PORTIONS, hasFruit: true };
+    }
+
+    return t;
+  });
 
   // --- Step 7: Pheromone mating (every tick, not just night) ---
   entities = pheromoneMating(entities, log, tickNum);
