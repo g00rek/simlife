@@ -16,7 +16,6 @@ export interface Traits {
   aggression: number;    // 0-10: 0 = always flee, 10 = always fight
   fertility: number;     // 0.5-2.0: higher = shorter mating time but shorter maxAge
   twinChance: number;   // 0-1: chance of multiple births (0=always single, 1=always multiples)
-  pheromoneRange: number; // 1-4: tiles within which male can impregnate female
 }
 
 export type TribeId = number; // 0/1/2 = starting tribes
@@ -120,7 +119,6 @@ export const TICKS_PER_DAY = 20; // 10 day + 10 night
 export const DAY_TICKS = 10;     // first 10 ticks = daytime
 export const NIGHT_TICKS = 10;   // last 10 ticks = nighttime
 
-export const PHEROMONE_CHANCE = 0.15;  // 15% chance per tick when in range
 export const MATE_COOLDOWN = 200;      // ticks after impregnation before male can mate again
 
 export interface House {

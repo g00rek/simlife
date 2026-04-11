@@ -23,7 +23,7 @@ function makeEntity(overrides: Partial<Entity> = {}): Entity {
       aggression: 3,
       fertility: 1.0,
       twinChance: 0,
-      pheromoneRange: 2,
+
     },
     meat: 0,
     tribe: 0,
@@ -103,7 +103,7 @@ describe('decideAction gather behavior', () => {
         aggression: 3,
         fertility: 1.0,
         twinChance: 0,
-        pheromoneRange: 2,
+  
       },
     });
     const village = {

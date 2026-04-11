@@ -91,11 +91,6 @@ export function EntityPanel({ entity, world, onClose }: EntityPanelProps) {
         <Bar value={entity.traits.twinChance} max={0.5} color="#73daca" />
       </div>
       <div style={rowStyle}>
-        <span style={dimStyle}>Pheromone:</span>
-        <span>{entity.traits.pheromoneRange}</span>
-        <Bar value={entity.traits.pheromoneRange} max={4} color="#ff9e64" />
-      </div>
-      <div style={rowStyle}>
         <span style={dimStyle}>Tribe:</span>
         <span style={{ color: '#ccc' }}>
           {['Red', 'Blue', 'Green'][entity.tribe] ?? `Tribe ${entity.tribe}`}

@@ -1,7 +1,7 @@
 import type { Entity, Animal, Plant, Tree, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId, DeathCause } from './types';
 import {
   MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR,
-  PREGNANCY_DURATION, BIRTH_COOLDOWN, INFANT_MORTALITY, MATERNAL_MORTALITY, FIGHTING_DURATION, TICKS_PER_DAY, PHEROMONE_CHANCE, MATE_COOLDOWN,
+  PREGNANCY_DURATION, BIRTH_COOLDOWN, INFANT_MORTALITY, MATERNAL_MORTALITY, FIGHTING_DURATION, TICKS_PER_DAY, MATE_COOLDOWN,
   ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
   FOOD_RESERVE_MAX, FOOD_RESERVE_MIN, FOOD_RESERVE_PER_PERSON, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST, PLANT_RESERVE_MIN,
   ANIMAL_COUNT, PLANT_COUNT, PLANT_MAX, PLANT_RESPAWN_INTERVAL, scaled,
@@ -113,7 +113,6 @@ function randomTraits(): Traits {
     aggression: Math.floor(Math.random() * 4) + 1,          // 1-4 (low start, evolution decides)
     fertility: +(0.8 + Math.random() * 0.4).toFixed(2),     // 0.8-1.2
     twinChance: +(Math.random() * 0.1).toFixed(2),         // 0-0.1 (low on start)
-    pheromoneRange: Math.floor(Math.random() * 3) + 1,     // 1-3 (low on start)
   };
 }
 
@@ -133,19 +132,16 @@ function inheritTraits(a: Traits, b: Traits): Traits {
     aggression: inheritTrait(a.aggression, b.aggression, 0, 10, 1),
     fertility: inheritTrait(a.fertility, b.fertility, 0.5, 2.0, 0.1),
     twinChance: inheritTrait(a.twinChance, b.twinChance, 0, 0.5, 0.05),
-    pheromoneRange: inheritTrait(a.pheromoneRange, b.pheromoneRange, 1, 4, 0.5),
   };
-  // Round integer traits
   traits.strength = Math.round(traits.strength);
   traits.speed = Math.round(traits.speed);
   traits.perception = Math.round(traits.perception);
   traits.aggression = Math.round(traits.aggression);
-  traits.pheromoneRange = Math.round(traits.pheromoneRange);
 
   if (dramaticMutation) {
-    const traitKeys: (keyof Traits)[] = ['strength', 'speed', 'perception', 'aggression', 'pheromoneRange'];
+    const traitKeys: (keyof Traits)[] = ['strength', 'speed', 'perception', 'aggression'];
     const key = traitKeys[Math.floor(Math.random() * traitKeys.length)];
-    const maxVals: Record<string, number> = { strength: 10, speed: 3, perception: 5, aggression: 10, pheromoneRange: 4 };
+    const maxVals: Record<string, number> = { strength: 10, speed: 3, perception: 5, aggression: 10 };
     // Push to extreme (high or low)
     traits[key] = Math.random() < 0.5 ? 1 : maxVals[key];
   }
@@ -548,22 +544,24 @@ function pheromoneMating(entities: Entity[], log: LogEntry[], tickNum: number): 
 
   for (const male of males) {
     if (matedMaleIds.has(male.id)) continue;
-    const range = male.traits.pheromoneRange;
+    const range = Math.floor(male.traits.perception); // perception = mating range
 
-    // Find fertile females in pheromone range
+    // Find fertile females in range
     for (let fi = 0; fi < updated.length; fi++) {
       const female = updated[fi];
       if (female.gender !== 'female' || isChild(female)) continue;
       if (!isReproductive(female)) continue;
       if (female.state === 'pregnant') continue;
       if (female.birthCooldown > 0) continue;
-      if (female.tribe !== male.tribe) continue; // same tribe only
+      if (female.tribe !== male.tribe) continue;
+      if (!female.homeId) continue; // only females with a home can get pregnant
 
       const dist = manhattan(male.position, female.position);
       if (dist > range) continue;
 
-      // Pheromone chance
-      if (Math.random() >= PHEROMONE_CHANCE) continue;
+      // Mating chance based on male strength (strength 1 = 5%, strength 10 = 50%)
+      const matingChance = male.traits.strength / 20;
+      if (Math.random() >= matingChance) continue;
 
       // Impregnate!
       const pregTime = Math.max(3, Math.round(PREGNANCY_DURATION / female.traits.fertility));
@@ -737,12 +735,6 @@ export function tick(state: WorldState): WorldState {
             coldExposure: false,
             goalSetTick: 0,
           };
-
-          // No home at birth → baby dies
-          if (!birthHome) {
-            logEvent(baby, 'death', { cause: 'starvation', detail: 'no home' });
-            continue;
-          }
 
           // Infant mortality — historical ~30% death rate at birth
           if (Math.random() < INFANT_MORTALITY) {
