@@ -240,6 +240,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
   const prevAnimalPos = useRef<Map<string, PosRecord>>(new Map());
   const lastTickRef = useRef(0);
   const tickTimeRef = useRef(performance.now());
+  const tickIntervalRef = useRef(300); // measured ms between ticks
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -288,11 +289,15 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
   const currAnimalPos = useRef<Map<string, PosRecord>>(new Map());
 
   if (world.tick !== lastTickRef.current) {
+    // Measure actual tick interval for smooth lerp
+    const now = performance.now();
+    const interval = now - tickTimeRef.current;
+    if (interval > 10 && interval < 5000) tickIntervalRef.current = interval;
     // Promote current → prev
     prevEntityPos.current = currEntityPos.current;
     prevAnimalPos.current = currAnimalPos.current;
     lastTickRef.current = world.tick;
-    tickTimeRef.current = performance.now();
+    tickTimeRef.current = now;
   }
   // Always snapshot current positions
   const eMap = new Map<string, PosRecord>();
@@ -325,10 +330,9 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     if (!ctx) { raf = requestAnimationFrame(draw); return; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Interpolation progress: 0→1 between ticks. Cap at 1 so entities don't overshoot.
-    const LERP_DURATION = 200; // ms to complete movement (matches ~300ms tick speed)
+    // Interpolation progress: 0→1 between ticks, using measured tick interval
     const elapsed = performance.now() - tickTimeRef.current;
-    const t = Math.min(1, elapsed / LERP_DURATION);
+    const t = Math.min(1, elapsed / tickIntervalRef.current);
 
     const cellSize = size / world.gridSize;
     const ticksPerMonth = TICKS_PER_DAY * 10;
