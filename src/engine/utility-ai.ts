@@ -307,17 +307,13 @@ export function buildAIContext(
     }
   }
 
-  // Find nearest forest tile. Adults know the surrounding terrain well enough
-  // to head toward forest even when no fruiting plant is currently visible.
+  // Find nearest standing (not chopped) tree
   let nearestForest: AIContext['nearestForest'];
-  for (let ny = 0; ny < gridSize; ny++) {
-    for (let nx = 0; nx < gridSize; nx++) {
-      if (biomes[ny][nx] === 'forest') {
-        const d = Math.abs(nx - entity.position.x) + Math.abs(ny - entity.position.y);
-        if (d > 0 && (!nearestForest || d < nearestForest.dist)) {
-          nearestForest = { pos: { x: nx, y: ny }, dist: d };
-        }
-      }
+  for (const tr of trees) {
+    if (tr.chopped) continue;
+    const d = Math.abs(tr.position.x - entity.position.x) + Math.abs(tr.position.y - entity.position.y);
+    if (d > 0 && (!nearestForest || d < nearestForest.dist)) {
+      nearestForest = { pos: tr.position, dist: d };
     }
   }
 
