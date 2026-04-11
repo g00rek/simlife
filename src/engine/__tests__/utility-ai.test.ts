@@ -6,6 +6,7 @@ import type { Entity } from '../types';
 function makeEntity(overrides: Partial<Entity> = {}): Entity {
   return {
     id: 'e1',
+    name: 'Miroslava',
     position: { x: 5, y: 5 },
     gender: 'female',
     state: 'idle',
@@ -28,6 +29,7 @@ function makeEntity(overrides: Partial<Entity> = {}): Entity {
     tribe: 0,
     birthCooldown: 0,
     mateCooldown: 0,
+    goalSetTick: 0,
     ...overrides,
   };
 }
@@ -49,6 +51,7 @@ function makeContext(overrides: Partial<AIContext> = {}): AIContext {
     villageNeedsHouses: false,
     tribePopulation: 12,
     animalPopulation: 30,
+    gridSize: 30,
     ...overrides,
   };
 }
@@ -100,6 +103,7 @@ describe('decideAction gather behavior', () => {
         aggression: 3,
         fertility: 1.0,
         twinChance: 0,
+        pheromoneRange: 2,
       },
     });
     const village = {

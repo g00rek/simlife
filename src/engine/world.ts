@@ -1,18 +1,19 @@
-import type { Entity, Animal, Plant, Tree, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId } from './types';
+import type { Entity, Animal, Plant, Tree, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId, DeathCause } from './types';
 import {
   MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR,
-  PREGNANCY_DURATION, BIRTH_COOLDOWN, INFANT_MORTALITY, MATERNAL_MORTALITY, FIGHTING_DURATION, TICKS_PER_DAY, DAY_TICKS, PHEROMONE_CHANCE, MATE_COOLDOWN,
+  PREGNANCY_DURATION, BIRTH_COOLDOWN, INFANT_MORTALITY, MATERNAL_MORTALITY, FIGHTING_DURATION, TICKS_PER_DAY, PHEROMONE_CHANCE, MATE_COOLDOWN,
   ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
   FOOD_RESERVE_MAX, FOOD_RESERVE_MIN, FOOD_RESERVE_PER_PERSON, HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST, PLANT_RESERVE_MIN,
-  ANIMAL_COUNT, PLANT_COUNT, PLANT_MAX, PLANT_RESPAWN_INTERVAL,
+  ANIMAL_COUNT, PLANT_COUNT, PLANT_MAX, PLANT_RESPAWN_INTERVAL, scaled,
   PLANT_PORTIONS, PLANT_PORTIONS_PER_GATHER, PLANT_SPRING_FRUIT_CHANCE, FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT,
   CHOPPING_DURATION, BUILDING_DURATION,
   ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_HUNT_MIN_POPULATION, ANIMAL_FLEE_RANGE, HUNT_KILL_RANGE, FOREST_SPEED_PENALTY, FOREST_PLANT_BONUS,
-  WOOD_PER_CHOP, HOUSE_WOOD_COST, WINTER_WOOD_COST, WINTER_COLD_DAMAGE, NEAR_HOME_RANGE,
+  WOOD_PER_CHOP, HOUSE_WOOD_COST, WINTER_COLD_DAMAGE, NEAR_HOME_RANGE,
 } from './types';
 import { generateBiomeGrid, isPassable } from './biomes';
 import type { BiomeGenParams } from './biomes';
 import { decideAction, buildAIContext, actionToGoal } from './utility-ai';
+import { randomName } from './names';
 
 interface CreateWorldOptions {
   gridSize: number;
@@ -99,8 +100,8 @@ function villageNeedsPlants(village: Village | undefined, entities: Entity[]): b
   return villageNeedsFood(village, entities) || (!!village && village.plantStore < PLANT_RESERVE_MIN);
 }
 
-function canHuntAnimalPopulation(animals: Animal[]): boolean {
-  return animals.length > ANIMAL_HUNT_MIN_POPULATION;
+function canHuntAnimalPopulation(animals: Animal[], gridSize: number): boolean {
+  return animals.length > scaled(ANIMAL_HUNT_MIN_POPULATION, gridSize, 2);
 }
 
 function canGatherPlant(entity: Entity, village: Village | undefined, entities: Entity[]): boolean {
@@ -347,9 +348,9 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     color: tribeColors[i],
     name: tribeNames[i],
     stockpile: { ...sp },
-    meatStore: 10,
-    plantStore: 15,
-    woodStore: 10,
+    meatStore: scaled(10, gridSize, 5),
+    plantStore: scaled(15, gridSize, 8),
+    woodStore: scaled(10, gridSize, 5),
   }));
 
   // Create initial road ring around each stockpile (8-neighborhood).
@@ -392,10 +393,12 @@ export function createWorld(options: CreateWorldOptions): WorldState {
       }
       pos ??= sp;
 
+      const gender = i < perTribe / 2 ? 'male' : 'female';
       entities.push({
         id: generateId('e'),
+        name: randomName(gender),
         position: pos,
-        gender: i < perTribe / 2 ? 'male' : 'female',
+        gender,
         state: 'idle',
         stateTimer: 0,
         age: (MIN_REPRODUCTIVE_AGE + Math.floor(Math.random() * 10)) * TICKS_PER_YEAR, // 18-27 years
@@ -413,12 +416,14 @@ export function createWorld(options: CreateWorldOptions): WorldState {
         birthCooldown: 0,
         mateCooldown: 0,
         coldExposure: false,
+        goalSetTick: 0,
       });
     }
   }
 
+  const animalCount = scaled(ANIMAL_COUNT, gridSize, 2);
   const animals: Animal[] = [];
-  for (let i = 0; i < ANIMAL_COUNT; i++) {
+  for (let i = 0; i < animalCount; i++) {
     animals.push({
       id: generateId('a'),
       position: randomPassablePos(biomes, gridSize),
@@ -426,9 +431,10 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     });
   }
 
+  const plantCount = scaled(PLANT_COUNT, gridSize, 2);
   const plants: Plant[] = [];
-  for (let i = 0; i < PLANT_COUNT; i++) {
-    const mature = i < PLANT_COUNT / 2;
+  for (let i = 0; i < plantCount; i++) {
+    const mature = i < plantCount / 2;
     plants.push({
       id: generateId('p'),
       position: randomForestPos(biomes, gridSize),
@@ -457,8 +463,10 @@ function detectInteractions(
   entities: Entity[],
   gridSize: number,
   skipIds: Set<string>,
-  villages: Village[],
+  _villages: Village[],
   houses: House[] = [],
+  log?: LogEntry[],
+  tickNum?: number,
 ): Entity[] {
   const tileGroups = new Map<number, Entity[]>();
   for (const e of entities) {
@@ -505,6 +513,7 @@ function detectInteractions(
     }
   }
 
+  const loggedPairs = new Set<string>();
   return entities.map(e => {
     if (!newActionIds.has(e.id)) return e;
     const key = e.position.y * gridSize + e.position.x;
@@ -512,7 +521,21 @@ function detectInteractions(
     const otherMale = group.find(o => o.id !== e.id && o.gender === 'male' && newActionIds.has(o.id));
     if (e.gender === 'male' && otherMale) {
       if (otherMale.tribe === e.tribe) {
+        if (log && tickNum != null) {
+          const pairKey = [e.id, otherMale.id].sort().join(':');
+          if (!loggedPairs.has(pairKey)) {
+            loggedPairs.add(pairKey);
+            log.push({ tick: tickNum, type: 'train', entityId: e.id, name: e.name, gender: e.gender, age: e.age, detail: `with ${otherMale.name}` });
+          }
+        }
         return { ...e, state: 'training' as const, stateTimer: 3, goal: undefined };
+      }
+      if (log && tickNum != null) {
+        const pairKey = [e.id, otherMale.id].sort().join(':');
+        if (!loggedPairs.has(pairKey)) {
+          loggedPairs.add(pairKey);
+          log.push({ tick: tickNum, type: 'fight', entityId: e.id, name: e.name, gender: e.gender, age: e.age, detail: `vs ${otherMale.name}` });
+        }
       }
       return { ...e, state: 'fighting' as const, stateTimer: FIGHTING_DURATION, goal: undefined };
     }
@@ -522,7 +545,7 @@ function detectInteractions(
 
 // --- Pheromone mating: male in range + fertile female → pregnancy chance ---
 
-function pheromoneMating(entities: Entity[]): Entity[] {
+function pheromoneMating(entities: Entity[], log: LogEntry[], tickNum: number): Entity[] {
   const updated = [...entities];
   const matedMaleIds = new Set<string>();
 
@@ -561,6 +584,7 @@ function pheromoneMating(entities: Entity[]): Entity[] {
         fatherTribe: male.tribe,
         goal: undefined,
       };
+      log.push({ tick: tickNum, type: 'pregnant', entityId: female.id, name: female.name, gender: female.gender, age: female.age, detail: `father: ${male.name}` });
 
       // Male gets cooldown
       const mi = updated.findIndex(e => e.id === male.id);
@@ -576,12 +600,17 @@ function pheromoneMating(entities: Entity[]): Entity[] {
 
 export function tick(state: WorldState): WorldState {
   const { gridSize } = state;
+  const animalMax = scaled(ANIMAL_MAX, gridSize, 4);
+  const plantMax = scaled(PLANT_MAX, gridSize, 4);
   const biomes = state.biomes.map(row => [...row]);
   let trees = state.trees.map(t => ({ ...t, position: { ...t.position } }));
   const tickNum = state.tick + 1;
   const updatedVillages = state.villages.map(v => ({ ...v, color: [...v.color] as RGB }));
   function getVillage(tribe: TribeId) {
     return updatedVillages[tribe];
+  }
+  function logEvent(e: Entity, type: LogEntry['type'], extra?: { cause?: DeathCause; detail?: string }) {
+    log.push({ tick: tickNum, type, entityId: e.id, name: e.name, gender: e.gender, age: e.age, ...extra });
   }
   let animals = state.animals.map(a => ({ ...a, position: { ...a.position } }));
   let plants = state.plants.map(p => ({ ...p, position: { ...p.position } }));
@@ -624,16 +653,9 @@ export function tick(state: WorldState): WorldState {
   let entities: Entity[] = [];
   for (const e of aged) {
     if (e.age >= e.maxAge) {
-      log.push({ tick: tickNum, type: 'death', entityId: e.id, gender: e.gender, age: e.age, cause: 'old_age' });
+      logEvent(e, 'death', { cause: 'old_age' });
     } else if (e.energy <= 0) {
-      log.push({
-        tick: tickNum,
-        type: 'death',
-        entityId: e.id,
-        gender: e.gender,
-        age: e.age,
-        cause: e.coldExposure ? 'cold' : 'starvation',
-      });
+      logEvent(e, 'death', { cause: e.coldExposure ? 'cold' : 'starvation' });
     } else {
       entities.push({ ...e, coldExposure: false });
     }
@@ -702,10 +724,12 @@ export function tick(state: WorldState): WorldState {
 
         for (let b = 0; b < babyCount; b++) {
           const babyTraits = inheritTraits(dadTraits, mother.traits);
+          const babyGender = Math.random() < 0.5 ? 'male' : 'female' as const;
           const baby: Entity = {
             id: generateId('e'),
+            name: randomName(babyGender),
             position: { ...birthPos },
-            gender: Math.random() < 0.5 ? 'male' : 'female',
+            gender: babyGender,
             state: 'idle',
             stateTimer: 0,
             age: 0,
@@ -720,20 +744,21 @@ export function tick(state: WorldState): WorldState {
             tribe: (mother.fatherTribe === mother.tribe ? mother.tribe : (Math.random() < 0.5 ? mother.tribe : mother.fatherTribe!)) as TribeId,
             homeId: birthHome ? mother.homeId : undefined,
             coldExposure: false,
+            goalSetTick: 0,
           };
 
           // No home at birth → baby dies
           if (!birthHome) {
-            log.push({ tick: tickNum, type: 'death', entityId: baby.id, gender: baby.gender, age: 0, cause: 'starvation' });
+            logEvent(baby, 'death', { cause: 'starvation', detail: 'no home' });
             continue;
           }
 
           // Infant mortality — historical ~30% death rate at birth
           if (Math.random() < INFANT_MORTALITY) {
-            log.push({ tick: tickNum, type: 'death', entityId: baby.id, gender: baby.gender, age: 0, cause: 'starvation' });
+            logEvent(baby, 'death', { cause: 'starvation', detail: 'infant mortality' });
           } else {
             babies.push(baby);
-            log.push({ tick: tickNum, type: 'birth', entityId: baby.id, gender: baby.gender, age: 0 });
+            logEvent(baby, 'birth');
             grid[birthPos.y][birthPos.x]++;
           }
         }
@@ -741,7 +766,7 @@ export function tick(state: WorldState): WorldState {
         // Maternal mortality
         if (Math.random() < MATERNAL_MORTALITY) {
           deadIds.add(mother.id);
-          log.push({ tick: tickNum, type: 'death', entityId: mother.id, gender: mother.gender, age: mother.age, cause: 'childbirth' });
+          logEvent(mother, 'death', { cause: 'childbirth' });
         }
       }
     } else if (action === 'training') {
@@ -759,7 +784,7 @@ export function tick(state: WorldState): WorldState {
         const loserEnergy = loserEntity.energy - 40;
         if (loserEnergy <= 0) {
           deadIds.add(loserId);
-          log.push({ tick: tickNum, type: 'death', entityId: loserId, gender: loserEntity.gender, age: loserEntity.age, cause: 'fight' });
+          logEvent(loserEntity, 'death', { cause: 'fight', detail: `killed by ${winner.name}` });
         }
         // Loser energy reduction handled in apply step below
         resolvedIds.add(winner.id);
@@ -768,12 +793,11 @@ export function tick(state: WorldState): WorldState {
     } else if (action === 'chopping') {
       for (const chopper of finishing) {
         resolvedIds.add(chopper.id);
-        // Gather wood from forest — trees stay, forest stays
         const chopV = getVillage(chopper.tribe);
         if (chopV) chopV.woodStore += WOOD_PER_CHOP;
+        logEvent(chopper, 'chop', { detail: `+${WOOD_PER_CHOP} wood` });
       }
     } else if (action === 'building') {
-      // Done building → create house for village pool
       for (const builder of finishing) {
         resolvedIds.add(builder.id);
         if (isRoadTile(builder.position, biomes)) continue;
@@ -784,6 +808,7 @@ export function tick(state: WorldState): WorldState {
           tribe: builder.tribe,
         };
         houses.push(newHouse);
+        logEvent(builder, 'build_done', { detail: 'built a house' });
       }
     } else if (action === 'hunting') {
       for (const hunter of finishing) {
@@ -890,7 +915,7 @@ export function tick(state: WorldState): WorldState {
   // (Animals move after human movement + hunting detection — see step 5)
 
   // --- Step 2: Detect interactions (pre-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, houses);
+  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, houses, log, tickNum);
 
   // --- Step 2b: Instant hunting/gathering (on contact) ---
   for (let i = 0; i < entities.length; i++) {
@@ -900,7 +925,7 @@ export function tick(state: WorldState): WorldState {
     // Males hunt animals on same tile — instant kill (only if pantry needs it)
     const huntVillage = getVillage(e.tribe);
     const huntVillageNeedsFood = villageNeedsFood(huntVillage, entities);
-    const shouldHunt = e.gender === 'male' && canHuntAnimalPopulation(animals) && (isHungry(e) || huntVillageNeedsFood);
+    const shouldHunt = e.gender === 'male' && canHuntAnimalPopulation(animals, gridSize) && (isHungry(e) || huntVillageNeedsFood);
     if (shouldHunt) {
       const preyIdx = animals.findIndex(a =>
         Math.abs(a.position.x - e.position.x) + Math.abs(a.position.y - e.position.y) <= HUNT_KILL_RANGE
@@ -1040,7 +1065,7 @@ export function tick(state: WorldState): WorldState {
           entities[idx] = entity;
 
           // Arrived at goal target?
-          if (entity.position.x === entity.goal.target.x && entity.position.y === entity.goal.target.y) {
+          if (entity.goal?.target && entity.position.x === entity.goal.target.x && entity.position.y === entity.goal.target.y) {
             entity = { ...entity, goal: undefined };
             entities[idx] = entity;
             break;
@@ -1049,7 +1074,7 @@ export function tick(state: WorldState): WorldState {
           // Inline instant hunt/gather on each step
           const stepV = getVillage(entity.tribe);
           const stepVillageNeedsFood = villageNeedsFood(stepV, entities);
-          if (entity.gender === 'male' && canHuntAnimalPopulation(animals) && (isHungry(entity) || stepVillageNeedsFood)) {
+          if (entity.gender === 'male' && canHuntAnimalPopulation(animals, gridSize) && (isHungry(entity) || stepVillageNeedsFood)) {
             const pi = animals.findIndex(a => Math.abs(a.position.x - entity.position.x) + Math.abs(a.position.y - entity.position.y) <= HUNT_KILL_RANGE);
             if (pi >= 0) {
               animals.splice(pi, 1);
@@ -1057,6 +1082,7 @@ export function tick(state: WorldState): WorldState {
               if (stepV) stepV.meatStore += direct.remainingPortions;
               entity = { ...entity, ...direct.entity, goal: undefined };
               entities[idx] = entity;
+              logEvent(entity, 'hunt');
               break; // hunt complete, goal done
             }
           }
@@ -1077,7 +1103,7 @@ export function tick(state: WorldState): WorldState {
   }
 
   // --- Step 4: Detect interactions (post-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, houses);
+  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, houses, log, tickNum);
 
   // --- Step 4b: Instant hunting/gathering (post-movement) ---
   for (let i = 0; i < entities.length; i++) {
@@ -1086,7 +1112,7 @@ export function tick(state: WorldState): WorldState {
 
     const postHuntV = getVillage(e.tribe);
     const postVillageNeedsFood = villageNeedsFood(postHuntV, entities);
-    const postShouldHunt = e.gender === 'male' && canHuntAnimalPopulation(animals) && (isHungry(e) || postVillageNeedsFood);
+    const postShouldHunt = e.gender === 'male' && canHuntAnimalPopulation(animals, gridSize) && (isHungry(e) || postVillageNeedsFood);
     if (postShouldHunt) {
       const preyIdx = animals.findIndex(a =>
         Math.abs(a.position.x - e.position.x) + Math.abs(a.position.y - e.position.y) <= HUNT_KILL_RANGE
@@ -1098,6 +1124,7 @@ export function tick(state: WorldState): WorldState {
         if (postHuntV && postVillageNeedsFood) postHuntV.meatStore += direct.remainingPortions;
         else updated = { ...updated, meat: updated.meat + direct.remainingPortions };
         entities[i] = updated;
+        logEvent(updated, 'hunt');
         continue;
       }
     }
@@ -1193,7 +1220,7 @@ export function tick(state: WorldState): WorldState {
 
     plants[plantIdx] = { ...plants[plantIdx], portions: plants[plantIdx].portions - 1 };
     if (a.reproTimer > 0) continue;
-    if (animals.length + fedBabyAnimals.length >= ANIMAL_MAX) continue;
+    if (animals.length + fedBabyAnimals.length >= animalMax) continue;
 
     const spots = neighbors(a.position, gridSize).filter(
       n => isPassable(biomes[n.y][n.x])
@@ -1210,7 +1237,7 @@ export function tick(state: WorldState): WorldState {
   animals.push(...fedBabyAnimals);
 
   // --- Step 5b: Reproduce animals ---
-  if (animals.length < ANIMAL_MAX) {
+  if (animals.length < animalMax) {
     const animalTiles = new Map<number, Animal[]>();
     for (const a of animals) {
       const key = a.position.y * gridSize + a.position.x;
@@ -1221,7 +1248,7 @@ export function tick(state: WorldState): WorldState {
     const babyAnimals: Animal[] = [];
     for (const [key, group] of animalTiles) {
       const ready = group.filter(a => a.reproTimer === 0);
-      if (ready.length >= 2 && animals.length + babyAnimals.length < ANIMAL_MAX) {
+      if (ready.length >= 2 && animals.length + babyAnimals.length < animalMax) {
         ready[0].reproTimer = ANIMAL_REPRO_INTERVAL;
         ready[1].reproTimer = ANIMAL_REPRO_INTERVAL;
         const px = key % gridSize;
@@ -1261,9 +1288,9 @@ export function tick(state: WorldState): WorldState {
     const basePlants = plants.filter(p => p.portions > 0);
     const occupied = new Set(plants.map(p => `${p.position.x},${p.position.y}`));
     for (const parent of basePlants) {
-      if (plants.length >= PLANT_MAX) break;
+      if (plants.length >= plantMax) break;
       const attempts = Math.floor(Math.random() * 2); // 0..1
-      for (let a = 0; a < attempts && plants.length < PLANT_MAX; a++) {
+      for (let a = 0; a < attempts && plants.length < plantMax; a++) {
         let spawned = false;
         for (let t = 0; t < 10 && !spawned; t++) {
           const dx = Math.floor(Math.random() * 7) - 3; // -3..3
@@ -1307,14 +1334,14 @@ export function tick(state: WorldState): WorldState {
   }
 
   // Slow new plant spawns
-  if (tickNum % PLANT_RESPAWN_INTERVAL === 0 && plants.length < PLANT_MAX) {
+  if (tickNum % PLANT_RESPAWN_INTERVAL === 0 && plants.length < plantMax) {
     plants.push({
       id: generateId('p'),
       position: randomForestPos(biomes, gridSize),
       portions: isWinter ? 0 : PLANT_PORTIONS,
       maxPortions: PLANT_PORTIONS,
     });
-    for (let b = 0; b < FOREST_PLANT_BONUS && plants.length < PLANT_MAX; b++) {
+    for (let b = 0; b < FOREST_PLANT_BONUS && plants.length < plantMax; b++) {
       const p = randomPos(gridSize);
       if (biomes[p.y][p.x] === 'forest') {
         plants.push({
@@ -1331,7 +1358,7 @@ export function tick(state: WorldState): WorldState {
   plants = plants.filter(p => biomes[p.position.y]?.[p.position.x] === 'forest');
 
   // --- Step 7: Pheromone mating (every tick, not just night) ---
-  entities = pheromoneMating(entities);
+  entities = pheromoneMating(entities, log, tickNum);
 
   // --- Step 7b: Homeless females claim free houses ---
   for (let i = 0; i < entities.length; i++) {

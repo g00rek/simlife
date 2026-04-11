@@ -48,6 +48,7 @@ export interface EntityGoal {
 
 export interface Entity {
   id: string;
+  name: string;
   position: Position;
   gender: Gender;
   state: EntityState;
@@ -67,6 +68,7 @@ export interface Entity {
   fatherTribe?: TribeId;
   coldExposure?: boolean; // set when winter cold penalty was applied this tick
   goal?: EntityGoal;
+  goalSetTick: number;
 }
 
 export const MEAT_PORTIONS_PER_HUNT = 60;
@@ -159,11 +161,19 @@ export const FOOD_RESERVE_MAX = 120;
 export const PLANT_RESERVE_MIN = 20;
 export const PLANT_DETECTION_MULTIPLIER = 3;
 
-// Resources
+// Resources — base values tuned for 30×30 (900 tiles)
 export const ANIMAL_COUNT = 8;
 export const PLANT_COUNT = 8;
 export const PLANT_MAX = 300;
 export const PLANT_RESPAWN_INTERVAL = 100; // new plant every ~5 days
+
+// Scale a base value proportionally to map area. Reference: 30×30 = 900 tiles.
+// Returns at least `floor` (default 1).
+const REF_AREA = 900;
+export function scaled(base: number, gridSize: number, floor = 1): number {
+  const area = gridSize * gridSize;
+  return Math.max(floor, Math.round(base * area / REF_AREA));
+}
 
 // Biomes
 export type Biome = 'plains' | 'forest' | 'mountain' | 'water' | 'road';
@@ -175,13 +185,20 @@ export interface BiomeGrid {
 
 export type DeathCause = 'old_age' | 'starvation' | 'fight' | 'cold' | 'childbirth';
 
+export type LogEventType =
+  | 'birth' | 'death' | 'pregnant'
+  | 'hunt' | 'gather' | 'chop' | 'build_start' | 'build_done'
+  | 'fight' | 'train' | 'house_claimed';
+
 export interface LogEntry {
   tick: number;
-  type: 'birth' | 'death';
+  type: LogEventType;
   entityId: string;
+  name: string;
   gender: Gender;
   age: number; // in ticks
   cause?: DeathCause;
+  detail?: string;
 }
 
 export const FOREST_PLANT_BONUS = 1; // extra plant spawns in forest per interval
