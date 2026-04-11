@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import type { WorldState, Entity, Village } from '../engine/types';
 import { CHILD_AGE, TICKS_PER_DAY, TICKS_PER_YEAR } from '../engine/types';
 import { ageInYears } from '../engine/world';
-import { drawSurfaceLayer, drawWaterLayer, drawTreeLayer } from './terrain/renderer';
+import { drawSurfaceLayer, drawWaterLayer, drawTreeLayer, drawGrassLayer } from './terrain/renderer';
 import type { Season } from './terrain/renderer';
 
 const MINI_MEDIEVAL_BASE = '/assets/mini-medieval/Mini-Medieval-8x8';
@@ -11,6 +11,7 @@ const STRUCTURES_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Structures.png`;
 const MISC_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Misc.png`;
 const OVERWORLD_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Overworld.png`;
 const ANIMALS_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Animals.png`;
+const INTERFACE_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Interface.png`;
 
 interface GridCanvasProps {
   world: WorldState;
@@ -25,6 +26,7 @@ interface SpriteAssets {
   structures: HTMLImageElement;
   misc: HTMLImageElement;
   overworld: HTMLImageElement;
+  ui: HTMLImageElement;
   animals: HTMLImageElement;
 }
 
@@ -270,11 +272,12 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     const misc = new Image();
     const overworld = new Image();
     const animals = new Image();
+    const ui = new Image();
     let loaded = 0;
     const done = () => {
       loaded++;
-      if (loaded < 5 || cancelled) return;
-      spritesRef.current = { units, structures, misc, overworld, animals };
+      if (loaded < 6 || cancelled) return;
+      spritesRef.current = { units, structures, misc, overworld, animals, ui };
       setSpritesVersion(v => v + 1);
     };
     units.onload = done;
@@ -282,16 +285,19 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     misc.onload = done;
     overworld.onload = done;
     animals.onload = done;
+    ui.onload = done;
     units.onerror = done;
     structures.onerror = done;
     misc.onerror = done;
     overworld.onerror = done;
     animals.onerror = done;
+    ui.onerror = done;
     units.src = UNITS_SHEET_URL;
     structures.src = STRUCTURES_SHEET_URL;
     misc.src = MISC_SHEET_URL;
     overworld.src = OVERWORLD_SHEET_URL;
     animals.src = ANIMALS_SHEET_URL;
+    ui.src = INTERFACE_SHEET_URL;
     return () => { cancelled = true; };
   }, []);
 
@@ -392,6 +398,9 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     if (sprites) {
       drawWaterLayer(ctx, sprites.overworld, world.biomes, world.gridSize, cellSize, Math.floor(frameCount / 6));
     }
+
+    // --- Layer 1b: Grass food ---
+    drawGrassLayer(ctx, sprites.overworld, world.grass, world.gridSize, cellSize);
 
     // --- Layer 2: Trees (shared renderer) ---
     if (sprites) {
@@ -594,30 +603,23 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       }
     }
 
-    // Draw tile selection highlight
+    // Draw tile selection highlight (Interface.png|32,8,8,8)
     if (selectedTile) {
-      ctx.strokeStyle = '#e0af68';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(
-        selectedTile.x * cellSize + 1,
-        selectedTile.y * cellSize + 1,
-        cellSize - 2,
-        cellSize - 2,
-      );
+      const sx = Math.round(selectedTile.x * cellSize);
+      const sy = Math.round(selectedTile.y * cellSize);
+      const cs = Math.round(cellSize);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(sprites.ui, 32, 8, 8, 8, sx, sy, cs, cs);
     }
 
     // Draw entity selection highlight
     if (selectedId) {
       const sel = draws.find(d => d.id === selectedId);
       if (sel) {
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(
-          sel.cx - cellSize * 0.4,
-          sel.cy - cellSize * 0.45,
-          cellSize * 0.8,
-          cellSize * 0.9,
-        );
+        const es = Math.round(cellSize);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(sprites.ui, 32, 8, 8, 8,
+          Math.round(sel.cx - es / 2), Math.round(sel.cy - es / 2), es, es);
       }
     }
     raf = requestAnimationFrame(draw);

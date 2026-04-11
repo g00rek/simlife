@@ -39,7 +39,6 @@ export function MapPage() {
   const [biomes, setBiomes] = useState<Biome[][]>(() => generateBiomeGrid(initial.gridSize, initial.params));
   const [sprite, setSprite] = useState<HTMLImageElement | null>(null);
   const [oresSprite, setOresSprite] = useState<HTMLImageElement | null>(null);
-  const [grassDensity, setGrassDensity] = useState(7);
   const [waveDensity, setWaveDensity] = useState(5);
   const [containerWidth, setContainerWidth] = useState(window.innerWidth - 32);
 
@@ -98,13 +97,13 @@ export function MapPage() {
       tick++;
       drawTerrain({
         ctx, overworld: sprite, ores: oresSprite ?? undefined, biomes, gridSize: gs, cellSize, tick,
-        season: 'summer', trees, grassDensity, waveDensity,
+        season: 'summer', trees, waveDensity,
       });
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [biomes, sprite, oresSprite, cellSize, trees, grassDensity, waveDensity]);
+  }, [biomes, sprite, oresSprite, cellSize, trees, waveDensity]);
 
   const updateParam = useCallback((key: keyof BiomeGenParams, value: number) => {
     setParams(prev => {
@@ -164,8 +163,6 @@ export function MapPage() {
             <ParamSlider label="Rocks %" value={params.mountainPct}
               min={0} max={100} step={1}
               onChange={v => updateParam('mountainPct', v)} />
-            <ParamSlider label="Grass detail" value={grassDensity} min={0} max={100} step={1}
-              onChange={v => setGrassDensity(v)} />
             <ParamSlider label="Wave density" value={waveDensity} min={0} max={100} step={1}
               onChange={v => setWaveDensity(v)} />
           </div>

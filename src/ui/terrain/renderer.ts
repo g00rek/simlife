@@ -13,25 +13,12 @@ const BIOME_COLORS: Record<Biome, string> = {
   road:     '#c78539',
 };
 
-// Plains tile variations (grass with occasional flowers/details)
-const PLAINS_TILES = [
-  { sx: 0, sy: 0 }, { sx: 8, sy: 0 }, { sx: 16, sy: 0 }, { sx: 24, sy: 0 },
-  { sx: 0, sy: 8 }, { sx: 8, sy: 8 }, { sx: 16, sy: 8 }, { sx: 24, sy: 8 },
-];
+// Base plains tile (plain grass, no decorative variants)
+const PLAINS_BASE = { sx: 0, sy: 0 };
+// Grass food sprite for animals (Overworld.png|24,8,8,8)
+const GRASS_FOOD = { sx: 24, sy: 8 };
 
-function tileHash(x: number, y: number, salt: number): number {
-  let h = (x * 374761393 + y * 668265263 + salt * 982451653) | 0;
-  h = (h ^ (h >>> 13)) * 1274126177;
-  h ^= h >>> 16;
-  return (h >>> 0) / 4294967296;
-}
 
-function pickPlainsTile(x: number, y: number, density: number): { sx: number; sy: number } {
-  const r = tileHash(x, y, 1);
-  if (r > density / 100) return PLAINS_TILES[0]; // base grass
-  const idx = 1 + Math.floor(tileHash(x, y, 2) * 7);
-  return PLAINS_TILES[Math.min(7, idx)];
-}
 
 export function drawSurfaceLayer(
   ctx: CanvasRenderingContext2D,
@@ -39,10 +26,8 @@ export function drawSurfaceLayer(
   gridSize: number,
   cellSize: number,
   overworld?: HTMLImageElement,
-  grassDensity: number = 7,
 ) {
   ctx.imageSmoothingEnabled = false;
-  // Fill background to prevent subpixel gaps between tiles
   ctx.fillStyle = BIOME_COLORS['plains'];
   ctx.fillRect(0, 0, gridSize * cellSize, gridSize * cellSize);
   for (let y = 0; y < gridSize; y++) {
@@ -53,12 +38,31 @@ export function drawSurfaceLayer(
       const pw = Math.ceil(cellSize + 0.5);
       const ph = Math.ceil(cellSize + 0.5);
       if (overworld && (biome === 'plains' || biome === 'forest')) {
-        const tile = pickPlainsTile(x, y, grassDensity);
-        ctx.drawImage(overworld, tile.sx, tile.sy, 8, 8, px, py, pw, ph);
+        ctx.drawImage(overworld, PLAINS_BASE.sx, PLAINS_BASE.sy, 8, 8, px, py, pw, ph);
       } else {
         ctx.fillStyle = BIOME_COLORS[biome];
         ctx.fillRect(px, py, pw, ph);
       }
+    }
+  }
+}
+
+// Draw grass food sprites on tiles that have grass
+export function drawGrassLayer(
+  ctx: CanvasRenderingContext2D,
+  overworld: HTMLImageElement,
+  grass: number[][],
+  gridSize: number,
+  cellSize: number,
+) {
+  ctx.imageSmoothingEnabled = false;
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      if (grass[y][x] <= 0) continue;
+      const px = Math.floor(x * cellSize);
+      const py = Math.floor(y * cellSize);
+      const s = Math.round(cellSize);
+      ctx.drawImage(overworld, GRASS_FOOD.sx, GRASS_FOOD.sy, 8, 8, px, py, s, s);
     }
   }
 }
@@ -198,12 +202,12 @@ export interface TerrainRenderOpts {
   season: Season;
   trees?: Tree[];
   grid?: boolean;
-  grassDensity?: number; // 0-100, % of grass tiles with variation (default 7)
   waveDensity?: number;  // 0-100, % of water tiles with waves (default 5)
+  grass?: number[][];    // grass food grid for animals
 }
 
 export function drawTerrain(opts: TerrainRenderOpts) {
-  drawSurfaceLayer(opts.ctx, opts.biomes, opts.gridSize, opts.cellSize, opts.overworld, opts.grassDensity);
+  drawSurfaceLayer(opts.ctx, opts.biomes, opts.gridSize, opts.cellSize, opts.overworld);
   drawWaterLayer(opts.ctx, opts.overworld, opts.biomes, opts.gridSize, opts.cellSize, opts.tick, opts.waveDensity);
   if (opts.trees) {
     drawTreeLayer(opts.ctx, opts.overworld, opts.trees, opts.cellSize, opts.season, opts.biomes);
