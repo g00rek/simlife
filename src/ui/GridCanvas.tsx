@@ -57,12 +57,14 @@ function entityColor(entity: Entity, villages: Village[]): string {
   return `rgb(${base[0]},${base[1]},${base[2]})`;
 }
 
-function isEntityAtHome(entity: Entity, world: WorldState): boolean {
-  if (!entity.homeId) return false;
-  const home = world.houses.find(house => house.id === entity.homeId);
-  return !!home
-    && entity.position.x === home.position.x
-    && entity.position.y === home.position.y;
+function isInsideAnyHouse(entity: Entity, world: WorldState): boolean {
+  for (const h of world.houses) {
+    if (entity.position.x >= h.position.x && entity.position.x < h.position.x + 3
+      && entity.position.y >= h.position.y && entity.position.y < h.position.y + 3) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function drawPersonSprite(
@@ -447,7 +449,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     // --- Group entities by tile ---
     const tileMap = new Map<number, Entity[]>();
     for (const entity of world.entities) {
-      if (isEntityAtHome(entity, world)) continue;
+      if (isInsideAnyHouse(entity, world)) continue;
       const key = entity.position.y * world.gridSize + entity.position.x;
       const group = tileMap.get(key);
       if (group) {
@@ -553,7 +555,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     ctx.setLineDash([3, 3]);
     ctx.lineWidth = 0.5;
     for (const entity of world.entities) {
-      if (isEntityAtHome(entity, world)) continue;
+      if (isInsideAnyHouse(entity, world)) continue;
       if (entity.state !== 'idle' || ageInYears(entity) < CHILD_AGE) continue;
       // Skip idle entities at home (not foraging)
       const ePrev = prevEntityPos.current.get(entity.id) ?? entity.position;
