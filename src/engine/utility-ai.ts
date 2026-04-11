@@ -45,6 +45,7 @@ export interface AIContext {
   nearHome: boolean;
   homeTarget?: Position;
   nearestAnimal?: { pos: Position; dist: number };
+  animalHerdCenter?: Position; // center of mass of all animals (for long-range tracking)
   nearestFruitTree?: { pos: Position; dist: number };
   nearestForest?: { pos: Position; dist: number };
   villageNeedsHouses: boolean;
@@ -190,8 +191,9 @@ export function decideAction(ctx: AIContext): AIAction {
   if (huntScore > 0) {
     if (ctx.nearestAnimal) {
       scores.push({ key: 'hunt', score: huntScore, action: () => ({ type: 'go_hunt', target: ctx.nearestAnimal!.pos }) });
-    } else {
-      scores.push({ key: 'hunt', score: huntScore * 0.8, action: () => ({ type: 'wander' }) });
+    } else if (ctx.animalHerdCenter) {
+      // Can't see animals but know where herd is — trek toward them
+      scores.push({ key: 'hunt', score: huntScore * 0.7, action: () => ({ type: 'go_hunt', target: ctx.animalHerdCenter! }) });
     }
   }
 
@@ -295,6 +297,14 @@ export function buildAIContext(
     }
   }
 
+  // Animal herd center of mass (for long-range hunting trips)
+  let animalHerdCenter: Position | undefined;
+  if (animals.length > 0) {
+    let cx = 0, cy = 0;
+    for (const a of animals) { cx += a.position.x; cy += a.position.y; }
+    animalHerdCenter = { x: Math.round(cx / animals.length), y: Math.round(cy / animals.length) };
+  }
+
   // Find nearest fruit tree with available fruit
   let nearestFruitTree: AIContext['nearestFruitTree'];
   const fruitSense = sense * 3; // fruit trees visible from further away
@@ -366,6 +376,7 @@ export function buildAIContext(
     nearHome,
     homeTarget,
     nearestAnimal,
+    animalHerdCenter,
     nearestFruitTree,
     nearestForest,
     villageNeedsHouses,

@@ -89,10 +89,10 @@ export const ANIMAL_ENERGY_START = 60;
 export const ANIMAL_ENERGY_GRAZE = 12;     // energy gained from eating grass
 export const ANIMAL_ENERGY_DRAIN = 2;      // energy lost per ANIMAL_DRAIN_INTERVAL ticks
 export const ANIMAL_DRAIN_INTERVAL = 10;   // drain energy every N ticks (~2 per half-day)
-export const ANIMAL_REPRO_MIN_ENERGY = 70; // need plenty of energy to reproduce
-export const ANIMAL_REPRO_INTERVAL = 1200; // half year between reproduction
+export const ANIMAL_REPRO_MIN_ENERGY = 60; // need decent energy to reproduce
+export const ANIMAL_REPRO_INTERVAL = 800;  // reproduce faster (~4 months)
 export const ANIMAL_MAX = 999;             // no artificial cap — hunger regulates population
-export const ANIMAL_HUNT_MIN_POPULATION = 12;
+export const ANIMAL_HUNT_MIN_POPULATION = 6; // protect small herds from extinction
 export const ANIMAL_FLEE_RANGE = 2;      // animals detect humans from 2 tiles away
 export const HUNT_KILL_RANGE = 1;        // must be adjacent to kill
 
@@ -150,7 +150,7 @@ export const GATHERING_DURATION = 0; // instant on contact
 // Energy
 export const ENERGY_MAX = 100;
 export const ENERGY_START = 80;
-export const ENERGY_DRAIN_INTERVAL = 25; // lose energy slowly — food is scarce
+export const ENERGY_DRAIN_INTERVAL = 40; // lose energy very slowly — food is precious
 export const ENERGY_MEAT = 30;           // meat is very nutritious
 export const ENERGY_PLANT = 20;          // fruit is decent
 export const ENERGY_MATING_MIN = 30;
@@ -164,7 +164,7 @@ export const FOOD_RESERVE_MIN = 10;       // minimum even for tiny populations
 export const PLANT_RESERVE_MIN = 20;
 
 // Resources — base values tuned for 30×30 (900 tiles)
-export const ANIMAL_COUNT = 8;
+export const ANIMAL_COUNT = 12;
 
 // Scale a base value proportionally to map area. Reference: 30×30 = 900 tiles.
 // Returns at least `floor` (default 1).
