@@ -75,8 +75,8 @@ export function drawWaterLayer(
 // ── Layer 2: Trees ──────────────────────────────────────────────────
 
 // Tree canopy: 32×32px sprites, drawn at ~2× cell size, overlapping neighbors
-const TREE_NORMAL = { sx: 64, sy: 368, sw: 32, sh: 32 };
-const TREE_WINTER = { sx: 32, sy: 712, sw: 32, sh: 32 };
+const TREE_NORMAL = { sx: 64, sy: 408, sw: 32, sh: 32 };
+const TREE_WINTER = { sx: 64, sy: 368, sw: 32, sh: 32 };
 const TREE_FRUIT_EMPTY = { sx: 160, sy: 488, sw: 32, sh: 32 }; // fruit tree, no fruit
 const TREE_FRUIT_FULL = { sx: 112, sy: 488, sw: 32, sh: 32 };  // fruit tree, with fruit
 
