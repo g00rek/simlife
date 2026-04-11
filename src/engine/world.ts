@@ -198,8 +198,7 @@ function manhattan(a: Position, b: Position): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-function stepToward(from: Position, to: Position, biomes: Biome[][], gridSize: number): Position {
-  // Try all 4 directions, pick the passable one closest to target
+function stepToward(from: Position, to: Position, biomes: Biome[][], gridSize: number, houseTiles?: Set<string>): Position {
   const candidates: Position[] = [
     { x: from.x + 1, y: from.y },
     { x: from.x - 1, y: from.y },
@@ -209,21 +208,20 @@ function stepToward(from: Position, to: Position, biomes: Biome[][], gridSize: n
   let bestPos = from;
   let bestDist = manhattan(from, to);
   for (const c of candidates) {
-    if (!isValidMove(c, biomes, gridSize)) continue;
+    if (!isValidMove(c, biomes, gridSize, houseTiles)) continue;
     const d = manhattan(c, to);
     if (d < bestDist) {
       bestDist = d;
       bestPos = c;
     }
   }
-  // If no direction gets closer, try any passable (wall-following)
   if (bestPos === from) {
     for (let i = candidates.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
     }
     for (const c of candidates) {
-      if (isValidMove(c, biomes, gridSize)) return c;
+      if (isValidMove(c, biomes, gridSize, houseTiles)) return c;
     }
   }
   return bestPos;
@@ -286,25 +284,36 @@ function randomPassablePos(biomes: Biome[][], gridSize: number): Position {
   return randomPos(gridSize); // fallback
 }
 
-function isValidMove(pos: Position, biomes: Biome[][], gridSize: number): boolean {
+function isValidMove(pos: Position, biomes: Biome[][], gridSize: number, houseTiles?: Set<string>): boolean {
   if (pos.x < 0 || pos.x >= gridSize || pos.y < 0 || pos.y >= gridSize) return false;
-  return isPassable(biomes[pos.y][pos.x]);
+  if (!isPassable(biomes[pos.y][pos.x])) return false;
+  if (houseTiles && houseTiles.has(`${pos.x},${pos.y}`)) return false;
+  return true;
 }
 
-function randomStepBiome(position: Position, gridSize: number, biomes: Biome[][]): Position {
+function buildHouseTileSet(houses: House[]): Set<string> {
+  const s = new Set<string>();
+  for (const h of houses) {
+    for (let dy = 0; dy < 3; dy++)
+      for (let dx = 0; dx < 3; dx++)
+        s.add(`${h.position.x + dx},${h.position.y + dy}`);
+  }
+  return s;
+}
+
+function randomStepBiome(position: Position, gridSize: number, biomes: Biome[][], houseTiles?: Set<string>): Position {
   const dirs: Position[] = [
     { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 },
   ];
-  // Shuffle directions
   for (let i = dirs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
   }
   for (const d of dirs) {
     const np = { x: position.x + d.x, y: position.y + d.y };
-    if (isValidMove(np, biomes, gridSize)) return np;
+    if (isValidMove(np, biomes, gridSize, houseTiles)) return np;
   }
-  return position; // stuck (surrounded by impassable)
+  return position;
 }
 
 export function createWorld(options: CreateWorldOptions): WorldState {
@@ -633,6 +642,7 @@ export function tick(state: WorldState): WorldState {
   const biomes = state.biomes.map(row => [...row]);
   let trees = state.trees.map(t => ({ ...t, position: { ...t.position } }));
   const grass = state.grass.map(row => [...row]);
+  const houseTiles = buildHouseTileSet(state.houses);
   const tickNum = state.tick + 1;
   const updatedVillages = state.villages.map(v => ({ ...v, color: [...v.color] as RGB }));
   function getVillage(tribe: TribeId) {
@@ -1006,7 +1016,7 @@ export function tick(state: WorldState): WorldState {
       } else {
         // Non-goal action (rest, play, wander) — execute once
         if (action.type === 'play') {
-          const playTarget = randomStepBiome(entity.position, gridSize, biomes);
+          const playTarget = randomStepBiome(entity.position, gridSize, biomes, houseTiles);
           if (isNearTribeHouses(playTarget, entity.tribe, houses) && moveGrid[playTarget.y][playTarget.x] < 2) {
             moveGrid[entity.position.y][entity.position.x]--;
             moveGrid[playTarget.y][playTarget.x]++;
@@ -1014,7 +1024,7 @@ export function tick(state: WorldState): WorldState {
             entities[idx] = entity;
           }
         } else if (action.type === 'wander') {
-          const wTarget = randomStepBiome(entity.position, gridSize, biomes);
+          const wTarget = randomStepBiome(entity.position, gridSize, biomes, houseTiles);
           if (moveGrid[wTarget.y][wTarget.x] < 2) {
             moveGrid[entity.position.y][entity.position.x]--;
             moveGrid[wTarget.y][wTarget.x]++;
@@ -1034,7 +1044,7 @@ export function tick(state: WorldState): WorldState {
       for (let step = 0; step < speed; step++) {
         if (entity.state !== 'idle' || !entity.goal?.target) break;
 
-        const moveTarget = stepToward(entity.position, entity.goal.target, biomes, gridSize);
+        const moveTarget = stepToward(entity.position, entity.goal.target, biomes, gridSize, houseTiles);
         if (!moveTarget || (moveTarget.x === entity.position.x && moveTarget.y === entity.position.y)) {
           // Can't move or already there — clear goal
           entity = { ...entity, goal: undefined };
@@ -1128,8 +1138,8 @@ export function tick(state: WorldState): WorldState {
       const flee = Math.abs(dx) >= Math.abs(dy)
         ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
         : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
-      newPos = isValidMove(flee, biomes, gridSize)
-        ? flee : randomStepBiome(a.position, gridSize, biomes);
+      newPos = isValidMove(flee, biomes, gridSize, houseTiles)
+        ? flee : randomStepBiome(a.position, gridSize, biomes, houseTiles);
     } else {
       // Find nearest grass tile
       let nearestGrass: Position | undefined;
@@ -1147,7 +1157,7 @@ export function tick(state: WorldState): WorldState {
         }
       }
       if (nearestGrass && Math.random() < 0.15) {
-        newPos = stepToward(a.position, nearestGrass, biomes, gridSize);
+        newPos = stepToward(a.position, nearestGrass, biomes, gridSize, houseTiles);
       } else if (a.reproTimer === 0 && a.energy >= ANIMAL_REPRO_MIN_ENERGY && Math.random() < 0.2) {
         // Seek mate: move toward nearest opposite-gender animal (~20% of ticks)
         const oppositeGender = a.gender === 'male' ? 'female' : 'male';
@@ -1160,12 +1170,12 @@ export function tick(state: WorldState): WorldState {
           }
         }
         newPos = nearestMate
-          ? stepToward(a.position, nearestMate.position, biomes, gridSize)
+          ? stepToward(a.position, nearestMate.position, biomes, gridSize, houseTiles)
           : a.position;
       } else {
         // Idle — stay put most ticks, occasional wander (~5% chance)
         newPos = Math.random() < 0.05
-          ? randomStepBiome(a.position, gridSize, biomes)
+          ? randomStepBiome(a.position, gridSize, biomes, houseTiles)
           : a.position;
       }
     }

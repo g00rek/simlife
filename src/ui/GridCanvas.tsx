@@ -112,19 +112,40 @@ function drawHouseSprite(
   y: number,
   cellSize: number,
   tribe: number,
+  frameIdx: number,
 ) {
-  const rowByTribe = [80, 48, 0];
-  const srcX = 0;
-  const srcY = rowByTribe[Math.max(0, Math.min(2, tribe))];
-  const srcW = 32;
-  const srcH = 40;
-  // Scale sprite to cover 3×3 tiles
-  const dstW = Math.round(cellSize * 3);
-  const dstH = Math.round(cellSize * 3 * (srcH / srcW));
-  const dx = Math.round(x);
-  const dy = Math.round(y + cellSize * 3 - dstH);
+  // Roof Y by tribe: 0=red(96), 1=blue — not used, 2=green(56)
+  const roofSy = tribe === 2 ? 56 : 96;
+  // Roof X variants: 40, 104, 168 — pick by position hash
+  const roofVariants = [40, 104, 168];
+  const roofSx = roofVariants[Math.floor(((x * 7 + y * 13) & 0x7fffffff) % 3)];
+  // Chimney Y by tribe
+  const chimneySy = tribe === 2 ? 192 : 208;
+  const chimSx = 88 + (frameIdx % 6) * 8;
+
+  const s = Math.round(cellSize);
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(sprites.structures, srcX, srcY, srcW, srcH, dx, dy, Math.round(dstW), Math.round(dstH));
+
+  // Row 0: chimney smoke above roof (right column)
+  const chimOff = Math.round(s * 0.5);
+  ctx.drawImage(sprites.structures, chimSx, chimneySy, 8, 8, Math.round(x + 2 * s), Math.round(y - chimOff), s, s);
+
+  // Row 1: roof top
+  ctx.drawImage(sprites.structures, roofSx, roofSy, 8, 8, Math.round(x), Math.round(y), s, s);
+  ctx.drawImage(sprites.structures, roofSx + 8, roofSy, 8, 8, Math.round(x + s), Math.round(y), s, s);
+  ctx.drawImage(sprites.structures, roofSx + 16, roofSy, 8, 8, Math.round(x + 2 * s), Math.round(y), s, s);
+  // Chimney base on top of right roof tile
+  ctx.drawImage(sprites.structures, chimSx, chimneySy + 8, 8, 8, Math.round(x + 2 * s), Math.round(y), s, s);
+
+  // Row 2: roof bottom
+  ctx.drawImage(sprites.structures, roofSx, roofSy + 8, 8, 8, Math.round(x), Math.round(y + s), s, s);
+  ctx.drawImage(sprites.structures, roofSx + 8, roofSy + 8, 8, 8, Math.round(x + s), Math.round(y + s), s, s);
+  ctx.drawImage(sprites.structures, roofSx + 16, roofSy + 8, 8, 8, Math.round(x + 2 * s), Math.round(y + s), s, s);
+
+  // Row 3: walls (wood + door + wood)
+  ctx.drawImage(sprites.structures, 56, 280, 8, 8, Math.round(x), Math.round(y + 2 * s), s, s);
+  ctx.drawImage(sprites.structures, 0, 360, 8, 8, Math.round(x + s), Math.round(y + 2 * s), s, s);
+  ctx.drawImage(sprites.structures, 72, 280, 8, 8, Math.round(x + 2 * s), Math.round(y + 2 * s), s, s);
 }
 
 function drawStockpileSprite(
@@ -406,7 +427,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     for (const house of world.houses) {
       const hx = house.position.x * cellSize;
       const hy = house.position.y * cellSize;
-      drawHouseSprite(ctx, sprites, hx, hy, cellSize, house.tribe);
+      drawHouseSprite(ctx, sprites, hx, hy, cellSize, house.tribe, Math.floor(frameCount / 12));
     }
 
     // --- Draw animals (interpolated) ---
