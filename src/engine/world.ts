@@ -1159,27 +1159,42 @@ export function tick(state: WorldState): WorldState {
           }
         }
       }
-      if (nearestGrass && Math.random() < 0.15) {
+      // Find nearest herd member (any other animal)
+      let nearestHerd: Animal | undefined;
+      let nearestHerdDist = Infinity;
+      for (const other of animals) {
+        if (other.id === a.id) continue;
+        const d = manhattan(a.position, other.position);
+        if (d > 0 && d < nearestHerdDist) {
+          nearestHerdDist = d;
+          nearestHerd = other;
+        }
+      }
+
+      const roll = Math.random();
+      if (nearestGrass && a.energy < 70 && roll < 0.2) {
+        // Hungry — seek grass (~20% of ticks when energy < 70)
         newPos = stepToward(a.position, nearestGrass, biomes, gridSize, houseTiles);
-      } else if (a.reproTimer === 0 && a.energy >= ANIMAL_REPRO_MIN_ENERGY && Math.random() < 0.2) {
-        // Seek mate: move toward nearest opposite-gender animal (~20% of ticks)
+      } else if (a.reproTimer === 0 && a.energy >= ANIMAL_REPRO_MIN_ENERGY && roll < 0.35) {
+        // Seek mate — opposite gender within range 8
         const oppositeGender = a.gender === 'male' ? 'female' : 'male';
         let nearestMate: Animal | undefined;
         for (const other of animals) {
           if (other.id === a.id || other.gender !== oppositeGender) continue;
           const d = manhattan(a.position, other.position);
-          if (d > 0 && d <= 6 && (!nearestMate || d < manhattan(a.position, nearestMate.position))) {
+          if (d > 0 && d <= 8 && (!nearestMate || d < manhattan(a.position, nearestMate.position))) {
             nearestMate = other;
           }
         }
         newPos = nearestMate
           ? stepToward(a.position, nearestMate.position, biomes, gridSize, houseTiles)
           : a.position;
+      } else if (nearestHerd && nearestHerdDist > 3 && roll < 0.6) {
+        // Herding — move toward nearest animal if far (~25% of ticks)
+        newPos = stepToward(a.position, nearestHerd.position, biomes, gridSize, houseTiles);
       } else {
-        // Idle — stay put most ticks, occasional wander (~5% chance)
-        newPos = Math.random() < 0.05
-          ? randomStepBiome(a.position, gridSize, biomes, houseTiles)
-          : a.position;
+        // Idle — stay put
+        newPos = a.position;
       }
     }
     return { ...a, position: newPos, reproTimer: Math.max(0, a.reproTimer - 1) };
