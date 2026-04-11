@@ -111,6 +111,53 @@ function MapSpritePreview({
   return <canvas ref={canvasRef} width={72} height={72} style={{ borderRadius: 6, border: '1px solid #30384c', imageRendering: 'pixelated' }} />;
 }
 
+// Composite sprite: assembles multiple 8x8 tiles into one preview
+function CompositeSprite({ tiles, cols, scale = 6 }: {
+  tiles: Array<{ src: string; sx: number; sy: number }>;
+  cols: number;
+  scale?: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rows = Math.ceil(tiles.length / cols);
+  const w = cols * 8 * scale;
+  const h = rows * 8 * scale;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#1b1f2b';
+    ctx.fillRect(0, 0, w, h);
+
+    // Load unique images
+    const srcs = [...new Set(tiles.map(t => t.src))];
+    const imgs = new Map<string, HTMLImageElement>();
+    let loaded = 0;
+    for (const s of srcs) {
+      const img = new Image();
+      img.onload = () => {
+        imgs.set(s, img);
+        loaded++;
+        if (loaded === srcs.length) {
+          ctx.clearRect(0, 0, w, h);
+          ctx.fillStyle = '#1b1f2b';
+          ctx.fillRect(0, 0, w, h);
+          tiles.forEach((t, i) => {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const img = imgs.get(t.src)!;
+            ctx.drawImage(img, t.sx, t.sy, 8, 8, col * 8 * scale, row * 8 * scale, 8 * scale, 8 * scale);
+          });
+        }
+      };
+      img.src = s;
+    }
+  }, [tiles, cols, scale, w, h]);
+
+  return <canvas ref={canvasRef} width={w} height={h} style={{ borderRadius: 6, border: '1px solid #30384c', imageRendering: 'pixelated' as const }} />;
+}
+
 function Row({ name, id, preview }: { name: string; id: string; preview: React.ReactNode }) {
   return (
     <div style={rowStyle}>
@@ -208,7 +255,37 @@ export function SlashIconsPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={h2Style}>Map Objects</h2>
+        <h2 style={h2Style}>Houses 3×3 (New)</h2>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ textAlign: 'center' }}>
+            <CompositeSprite cols={3} tiles={[
+              { src: STRUCTURES, sx: 40, sy: 96 }, { src: STRUCTURES, sx: 48, sy: 96 }, { src: STRUCTURES, sx: 56, sy: 96 },
+              { src: STRUCTURES, sx: 40, sy: 104 }, { src: STRUCTURES, sx: 48, sy: 104 }, { src: STRUCTURES, sx: 56, sy: 104 },
+              { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
+            ]} />
+            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>v1 (red)</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <CompositeSprite cols={3} tiles={[
+              { src: STRUCTURES, sx: 104, sy: 96 }, { src: STRUCTURES, sx: 112, sy: 96 }, { src: STRUCTURES, sx: 120, sy: 96 },
+              { src: STRUCTURES, sx: 104, sy: 104 }, { src: STRUCTURES, sx: 112, sy: 104 }, { src: STRUCTURES, sx: 120, sy: 104 },
+              { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
+            ]} />
+            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>v2 (blue)</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <CompositeSprite cols={3} tiles={[
+              { src: STRUCTURES, sx: 168, sy: 96 }, { src: STRUCTURES, sx: 176, sy: 96 }, { src: STRUCTURES, sx: 184, sy: 96 },
+              { src: STRUCTURES, sx: 168, sy: 104 }, { src: STRUCTURES, sx: 176, sy: 104 }, { src: STRUCTURES, sx: 184, sy: 104 },
+              { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
+            ]} />
+            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>v3 (green)</div>
+          </div>
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={h2Style}>Map Objects (Old)</h2>
         <Row name="house red" id="Structures.png|0,80,32,40" preview={<MapSpritePreview src={STRUCTURES} sx={0} sy={80} sw={32} sh={40} wFrac={0.5} hFrac={0.62} align="bottom" />} />
         <Row name="house blue" id="Structures.png|0,48,32,40" preview={<MapSpritePreview src={STRUCTURES} sx={0} sy={48} sw={32} sh={40} wFrac={0.5} hFrac={0.62} align="bottom" />} />
         <Row name="house green" id="Structures.png|0,0,32,40" preview={<MapSpritePreview src={STRUCTURES} sx={0} sy={0} sw={32} sh={40} wFrac={0.5} hFrac={0.62} align="bottom" />} />
