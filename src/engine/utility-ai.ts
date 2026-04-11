@@ -320,15 +320,19 @@ export function buildAIContext(
     }
   }
 
-  // Village needs houses: homeless adults > free slots in existing houses
+  // Village needs houses: homeless adults > free slots + houses being built
   const tribeHousesForVillage = village
     ? houses.filter(h => h.tribe === village.tribe)
     : [];
   const totalFreeSlots = tribeHousesForVillage.reduce((s, h) => s + (HOUSE_CAPACITY - h.occupants.length), 0);
+  const housesBeingBuilt = village
+    ? entities.filter(e => e.tribe === village.tribe && e.state === 'building').length
+    : 0;
+  const pendingSlots = totalFreeSlots + housesBeingBuilt * HOUSE_CAPACITY;
   const homelessAdults = village
     ? entities.filter(e => e.tribe === village.tribe && ageInYears(e) >= CHILD_AGE && !e.homeId).length
     : 0;
-  const villageNeedsHouses = homelessAdults > totalFreeSlots;
+  const villageNeedsHouses = homelessAdults > pendingSlots;
 
   // Find nearest valid 3×3 build site
   let nearestBuildSite: AIContext['nearestBuildSite'];
