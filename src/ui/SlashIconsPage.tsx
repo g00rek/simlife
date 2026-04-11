@@ -157,6 +157,69 @@ function CompositeSprite({ tiles, cols, scale = 6 }: {
   return <canvas ref={canvasRef} width={w} height={h} style={{ borderRadius: 6, border: '1px solid #30384c', imageRendering: 'pixelated' as const }} />;
 }
 
+// Animated house: static 3x3 tiles + animated chimney on top-right
+function AnimatedHouse({ roofSx = 40, roofSy, label }: { roofSx?: number; roofSy: number; label: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scale = 6;
+  const w = 3 * 8 * scale; // 144
+  const h = 4 * 8 * scale; // 192 (1 row chimney + 2 rows roof + 1 row walls)
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    const img = new Image();
+    let raf: number;
+    let frame = 0;
+    let lastSwitch = 0;
+
+    img.onload = () => {
+      const draw = (now: number) => {
+        if (now - lastSwitch > 200) { frame = (frame + 1) % 6; lastSwitch = now; }
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#1b1f2b';
+        ctx.fillRect(0, 0, w, h);
+        const s = 8 * scale;
+
+        const chimSx = 88 + frame * 8;
+
+        // Row 0: chimney smoke (top) on right column
+        ctx.drawImage(img, chimSx, 208, 8, 8, 2 * s, 0, s, s);
+
+        // Row 1: roof top row + chimney base on right
+        ctx.drawImage(img, roofSx, roofSy, 8, 8, 0, s, s, s);
+        ctx.drawImage(img, roofSx + 8, roofSy, 8, 8, s, s, s, s);
+        ctx.drawImage(img, roofSx + 16, roofSy, 8, 8, 2 * s, s, s, s);
+        // Draw chimney base on top of roof tile
+        ctx.drawImage(img, chimSx, 216, 8, 8, 2 * s, s, s, s);
+
+        // Row 2: roof bottom row
+        ctx.drawImage(img, roofSx, roofSy + 8, 8, 8, 0, 2 * s, s, s);
+        ctx.drawImage(img, roofSx + 8, roofSy + 8, 8, 8, s, 2 * s, s, s);
+        ctx.drawImage(img, roofSx + 16, roofSy + 8, 8, 8, 2 * s, 2 * s, s, s);
+
+        // Row 3: walls
+        ctx.drawImage(img, 56, 280, 8, 8, 0, 3 * s, s, s);
+        ctx.drawImage(img, 0, 360, 8, 8, s, 3 * s, s, s);
+        ctx.drawImage(img, 72, 280, 8, 8, 2 * s, 3 * s, s, s);
+
+        raf = requestAnimationFrame(draw);
+      };
+      raf = requestAnimationFrame(draw);
+    };
+    img.src = STRUCTURES;
+    return () => cancelAnimationFrame(raf);
+  }, [roofSx, roofSy]);
+
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <canvas ref={canvasRef} width={w} height={h} style={{ borderRadius: 6, border: '1px solid #30384c', imageRendering: 'pixelated' as const }} />
+      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
 function Row({ name, id, preview }: { name: string; id: string; preview: React.ReactNode }) {
   return (
     <div style={rowStyle}>
@@ -244,63 +307,16 @@ export function SlashIconsPage() {
 
       {/* ── Houses ── */}
       <section style={sectionStyle}>
-        <h2 style={h2Style}>Houses 3×3</h2>
+        <h2 style={h2Style}>Houses 3×3 (with animated chimney)</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ textAlign: 'center' }}>
-            <CompositeSprite cols={3} tiles={[
-              { src: STRUCTURES, sx: 40, sy: 96 }, { src: STRUCTURES, sx: 48, sy: 96 }, { src: STRUCTURES, sx: 56, sy: 96 },
-              { src: STRUCTURES, sx: 40, sy: 104 }, { src: STRUCTURES, sx: 48, sy: 104 }, { src: STRUCTURES, sx: 56, sy: 104 },
-              { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
-            ]} />
-            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>red v1</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <CompositeSprite cols={3} tiles={[
-              { src: STRUCTURES, sx: 104, sy: 96 }, { src: STRUCTURES, sx: 112, sy: 96 }, { src: STRUCTURES, sx: 120, sy: 96 },
-              { src: STRUCTURES, sx: 104, sy: 104 }, { src: STRUCTURES, sx: 112, sy: 104 }, { src: STRUCTURES, sx: 120, sy: 104 },
-              { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
-            ]} />
-            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>red v2</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <CompositeSprite cols={3} tiles={[
-              { src: STRUCTURES, sx: 168, sy: 96 }, { src: STRUCTURES, sx: 176, sy: 96 }, { src: STRUCTURES, sx: 184, sy: 96 },
-              { src: STRUCTURES, sx: 168, sy: 104 }, { src: STRUCTURES, sx: 176, sy: 104 }, { src: STRUCTURES, sx: 184, sy: 104 },
-              { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
-            ]} />
-            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>red v3</div>
-          </div>
+          <AnimatedHouse roofSx={40} roofSy={96} label="red v1" />
+          <AnimatedHouse roofSx={104} roofSy={96} label="red v2" />
+          <AnimatedHouse roofSx={168} roofSy={96} label="red v3" />
         </div>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12 }}>
-          <SpriteAnimation src={STRUCTURES} frames={[88,96,104,112,120,128].map(sx => ({ sx, sy: 208 }))} label="chimney top" ms={200} />
-          <SpriteAnimation src={STRUCTURES} frames={[88,96,104,112,120,128].map(sx => ({ sx, sy: 216 }))} label="chimney base" ms={200} />
-        </div>
-
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12 }}>
-          <div style={{ textAlign: 'center' }}>
-            <CompositeSprite cols={3} tiles={[
-              { src: STRUCTURES, sx: 40, sy: 56 }, { src: STRUCTURES, sx: 48, sy: 56 }, { src: STRUCTURES, sx: 56, sy: 56 },
-              { src: STRUCTURES, sx: 40, sy: 64 }, { src: STRUCTURES, sx: 48, sy: 64 }, { src: STRUCTURES, sx: 56, sy: 64 },
-              { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
-            ]} />
-            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>green v1</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <CompositeSprite cols={3} tiles={[
-              { src: STRUCTURES, sx: 104, sy: 56 }, { src: STRUCTURES, sx: 112, sy: 56 }, { src: STRUCTURES, sx: 120, sy: 56 },
-              { src: STRUCTURES, sx: 104, sy: 64 }, { src: STRUCTURES, sx: 112, sy: 64 }, { src: STRUCTURES, sx: 120, sy: 64 },
-              { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
-            ]} />
-            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>green v2</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <CompositeSprite cols={3} tiles={[
-              { src: STRUCTURES, sx: 168, sy: 56 }, { src: STRUCTURES, sx: 176, sy: 56 }, { src: STRUCTURES, sx: 184, sy: 56 },
-              { src: STRUCTURES, sx: 168, sy: 64 }, { src: STRUCTURES, sx: 176, sy: 64 }, { src: STRUCTURES, sx: 184, sy: 64 },
-              { src: STRUCTURES, sx: 56, sy: 280 }, { src: STRUCTURES, sx: 0, sy: 360 }, { src: STRUCTURES, sx: 72, sy: 280 },
-            ]} />
-            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>green v3</div>
-          </div>
+          <AnimatedHouse roofSx={40} roofSy={56} label="green v1" />
+          <AnimatedHouse roofSx={104} roofSy={56} label="green v2" />
+          <AnimatedHouse roofSx={168} roofSy={56} label="green v3" />
         </div>
       </section>
 
