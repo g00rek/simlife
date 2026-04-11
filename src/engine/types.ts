@@ -92,8 +92,8 @@ export const ANIMAL_REPRO_MIN_ENERGY = 70; // need plenty of energy to reproduce
 export const ANIMAL_REPRO_INTERVAL = 1200; // half year between reproduction
 export const ANIMAL_MAX = 999;             // no artificial cap — hunger regulates population
 export const ANIMAL_HUNT_MIN_POPULATION = 12;
-export const ANIMAL_FLEE_RANGE = 1;
-export const HUNT_KILL_RANGE = 3;
+export const ANIMAL_FLEE_RANGE = 2;      // animals detect humans from 2 tiles away
+export const HUNT_KILL_RANGE = 1;        // must be adjacent to kill
 
 // Grass — grows on plains, food for animals
 export const GRASS_GROW_CHANCE = 0.001;  // chance per plains tile per tick to grow grass

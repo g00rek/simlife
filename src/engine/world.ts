@@ -1038,6 +1038,24 @@ export function tick(state: WorldState): WorldState {
       }
     }
 
+    // Hunt re-targeting: update target to nearest animal's current position
+    if (entity.goal?.type === 'hunt') {
+      const sense = Math.floor(3 + entity.traits.perception * 2);
+      let closest: Animal | undefined;
+      let closestDist = Infinity;
+      for (const a of animals) {
+        const d = manhattan(entity.position, a.position);
+        if (d > 0 && d <= sense && d < closestDist) { closestDist = d; closest = a; }
+      }
+      if (closest) {
+        entity = { ...entity, goal: { ...entity.goal, target: closest.position } };
+        entities[idx] = entity;
+      } else {
+        entity = { ...entity, goal: undefined };
+        entities[idx] = entity;
+      }
+    }
+
     // Pursue goal — move toward target
     if (entity.goal?.target) {
       const inForest = biomes[entity.position.y][entity.position.x] === 'forest';
@@ -1141,7 +1159,8 @@ export function tick(state: WorldState): WorldState {
         nearestHumanPos = e.position;
       }
     }
-    if (nearestHumanPos) {
+    if (nearestHumanPos && tickNum % 2 === 0) {
+      // Animals react every 2 ticks — gives faster hunters a chance to close in
       const dx = a.position.x - nearestHumanPos.x;
       const dy = a.position.y - nearestHumanPos.y;
       const flee = Math.abs(dx) >= Math.abs(dy)
