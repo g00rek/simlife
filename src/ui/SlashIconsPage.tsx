@@ -272,6 +272,11 @@ export function SlashIconsPage() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12 }}>
+          <SpriteAnimation src={STRUCTURES} frames={[88,96,104,112,120,128].map(sx => ({ sx, sy: 208 }))} label="chimney top" ms={200} />
+          <SpriteAnimation src={STRUCTURES} frames={[88,96,104,112,120,128].map(sx => ({ sx, sy: 216 }))} label="chimney base" ms={200} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12 }}>
           <div style={{ textAlign: 'center' }}>
             <CompositeSprite cols={3} tiles={[
               { src: STRUCTURES, sx: 40, sy: 56 }, { src: STRUCTURES, sx: 48, sy: 56 }, { src: STRUCTURES, sx: 56, sy: 56 },
