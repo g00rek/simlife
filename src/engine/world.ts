@@ -1077,11 +1077,12 @@ export function tick(state: WorldState): WorldState {
           nearestFruitTree = t;
         }
       }
-      if (nearestFruitTree) {
+      if (nearestFruitTree && Math.random() < 0.15) {
+        // Move toward food ~15% of ticks — relaxed grazing, not frantic running
         newPos = stepToward(a.position, nearestFruitTree.position, biomes, gridSize);
       } else {
-        // Idle — stay put most ticks, occasional wander (~10% chance)
-        newPos = Math.random() < 0.1
+        // Idle — stay put most ticks, occasional wander (~5% chance)
+        newPos = Math.random() < 0.05
           ? randomStepBiome(a.position, gridSize, biomes)
           : a.position;
       }

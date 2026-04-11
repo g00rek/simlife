@@ -51,33 +51,6 @@ function isEntityAtHome(entity: Entity, world: WorldState): boolean {
     && entity.position.y === home.position.y;
 }
 
-function drawPerson(
-  ctx: CanvasRenderingContext2D,
-  cx: number, cy: number,
-  cellSize: number,
-  gender: string,
-  isChild: boolean,
-) {
-  const emoji = isChild ? '🧒' : (gender === 'male' ? '🧍‍♂️' : '🧍‍♀️');
-  const by = cy + cellSize * 0.02;
-
-  // Person icon with shadow and outline-like stroke for contrast
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `${Math.max(12, Math.floor(cellSize * 0.9))}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-  ctx.shadowColor = 'rgba(0,0,0,0.8)';
-  ctx.shadowBlur = Math.max(1, cellSize * 0.08);
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 1;
-  ctx.lineWidth = Math.max(1.2, cellSize * 0.05);
-  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-  ctx.strokeText(emoji, cx, by);
-  ctx.fillText(emoji, cx, by);
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
-}
-
 function drawPersonSprite(
   ctx: CanvasRenderingContext2D,
   sprites: SpriteAssets,
@@ -118,35 +91,6 @@ function drawPersonSprite(
   ctx.drawImage(sprites.units, frame.sx, frame.sy, srcSize, srcSize, dx, dy, dstSize, dstSize);
 }
 
-function drawHouse(ctx: CanvasRenderingContext2D, x: number, y: number, cellSize: number, color: [number, number, number]) {
-  const [r, g, b] = color;
-  const baseX = x + cellSize * 0.14;
-  const baseY = y + cellSize * 0.35;
-  const baseW = cellSize * 0.72;
-  const baseH = cellSize * 0.5;
-
-  ctx.fillStyle = `rgba(${r},${g},${b},0.2)`;
-  ctx.fillRect(baseX, baseY, baseW, baseH);
-  ctx.strokeStyle = `rgb(${r},${g},${b})`;
-  ctx.lineWidth = Math.max(1, cellSize * 0.05);
-  ctx.strokeRect(baseX, baseY, baseW, baseH);
-
-  // roof
-  ctx.beginPath();
-  ctx.moveTo(x + cellSize * 0.08, y + cellSize * 0.36);
-  ctx.lineTo(x + cellSize * 0.5, y + cellSize * 0.1);
-  ctx.lineTo(x + cellSize * 0.92, y + cellSize * 0.36);
-  ctx.closePath();
-  ctx.fillStyle = `rgba(${r},${g},${b},0.6)`;
-  ctx.fill();
-  ctx.strokeStyle = `rgba(${r},${g},${b},0.95)`;
-  ctx.stroke();
-
-  // door
-  ctx.fillStyle = 'rgba(44,32,24,0.95)';
-  ctx.fillRect(x + cellSize * 0.45, y + cellSize * 0.58, cellSize * 0.12, cellSize * 0.27);
-}
-
 function drawHouseSprite(
   ctx: CanvasRenderingContext2D,
   sprites: SpriteAssets,
@@ -167,38 +111,6 @@ function drawHouseSprite(
   const dy = Math.round(y + cellSize - dstH); // bottom-aligned, roof sticks up
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(sprites.structures, srcX, srcY, srcW, srcH, dx, dy, Math.round(dstW), Math.round(dstH));
-}
-
-function drawStockpile(ctx: CanvasRenderingContext2D, x: number, y: number, cellSize: number, color: [number, number, number]) {
-  const [r, g, b] = color;
-  ctx.fillStyle = `rgba(${r},${g},${b},0.18)`;
-  ctx.fillRect(x + cellSize * 0.08, y + cellSize * 0.08, cellSize * 0.84, cellSize * 0.84);
-  ctx.strokeStyle = `rgb(${r},${g},${b})`;
-  ctx.lineWidth = Math.max(1.2, cellSize * 0.05);
-  ctx.strokeRect(x + cellSize * 0.08, y + cellSize * 0.08, cellSize * 0.84, cellSize * 0.84);
-
-  // stacked crates
-  const crates = [
-    { ox: 0.2, oy: 0.52, s: 0.22 },
-    { ox: 0.46, oy: 0.48, s: 0.24 },
-    { ox: 0.33, oy: 0.28, s: 0.2 },
-  ];
-  for (const c of crates) {
-    const cx = x + cellSize * c.ox;
-    const cy = y + cellSize * c.oy;
-    const s = cellSize * c.s;
-    ctx.fillStyle = '#b08a57';
-    ctx.fillRect(cx, cy, s, s);
-    ctx.strokeStyle = '#61452a';
-    ctx.lineWidth = Math.max(0.7, cellSize * 0.03);
-    ctx.strokeRect(cx, cy, s, s);
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + s, cy + s);
-    ctx.moveTo(cx + s, cy);
-    ctx.lineTo(cx, cy + s);
-    ctx.stroke();
-  }
 }
 
 function drawStockpileSprite(
@@ -240,24 +152,6 @@ function drawRoadTileSprite(
   const dstH = cellSize;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(sprites.overworld, srcX, srcY, srcW, srcH, x, y, Math.round(dstW), Math.round(dstH));
-}
-
-function drawAnimal(ctx: CanvasRenderingContext2D, cx: number, cy: number, cellSize: number) {
-  const bodyW = cellSize * 0.34;
-  const bodyH = cellSize * 0.2;
-  ctx.fillStyle = '#8d6e63';
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + cellSize * 0.2, bodyW, bodyH, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#5d4037';
-  ctx.lineWidth = Math.max(0.8, cellSize * 0.03);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(cx + bodyW * 0.65, cy + cellSize * 0.15, cellSize * 0.08, 0, Math.PI * 2);
-  ctx.fillStyle = '#8d6e63';
-  ctx.fill();
-  ctx.stroke();
 }
 
 // Animal animation frames (2 frames each, idle + running)
@@ -494,17 +388,13 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       if (!village.stockpile) continue;
       const sx = village.stockpile.x * cellSize;
       const sy = village.stockpile.y * cellSize;
-      if (sprites) drawStockpileSprite(ctx, sprites, sx, sy, cellSize, village.color, Math.floor(frameCount / 6));
-      else drawStockpile(ctx, sx, sy, cellSize, village.color);
+      drawStockpileSprite(ctx, sprites, sx, sy, cellSize, village.color, Math.floor(frameCount / 6));
     }
 
     for (const house of world.houses) {
       const hx = house.position.x * cellSize;
       const hy = house.position.y * cellSize;
-      const vc = world.villages.find(v => v.tribe === house.tribe);
-      const [r, g, b] = vc?.color ?? [150, 150, 150];
-      if (sprites) drawHouseSprite(ctx, sprites, hx, hy, cellSize, house.tribe);
-      else drawHouse(ctx, hx, hy, cellSize, [r, g, b]);
+      drawHouseSprite(ctx, sprites, hx, hy, cellSize, house.tribe);
     }
 
     // --- Draw animals (interpolated) ---
@@ -518,8 +408,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       const animalFrame = moving
         ? Math.floor(frameCount / 15) % 2   // running: faster animation (~0.25s)
         : Math.floor(frameCount / 60) % 2;  // idle: slow animation (~1s)
-      if (sprites) drawAnimalSprite(ctx, sprites, cx, cy, cellSize, animal.gender, animalFrame, moving, facingLeft);
-      else drawAnimal(ctx, cx, cy, cellSize);
+      drawAnimalSprite(ctx, sprites, cx, cy, cellSize, animal.gender, animalFrame, moving, facingLeft);
     }
 
     // --- Group entities by tile ---
@@ -610,8 +499,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
 
     // Draw person figures
     for (const { cx, cy, gender, tribe, child, tileX, tileY } of draws) {
-      if (sprites) drawPersonSprite(ctx, sprites, cx, cy, cellSize, gender, tribe, child, tileX, tileY);
-      else drawPerson(ctx, cx, cy, cellSize, gender, child);
+      drawPersonSprite(ctx, sprites, cx, cy, cellSize, gender, tribe, child, tileX, tileY);
     }
 
     // Keep text defaults predictable for next draw passes
