@@ -287,18 +287,19 @@ export function createWorld(options: CreateWorldOptions): WorldState {
       const x = 3 + Math.floor(Math.random() * (gridSize - 6));
       const y = 3 + Math.floor(Math.random() * (gridSize - 6));
       if (biomes[y][x] !== 'plains') continue;
-      // Check area around is mostly passable
-      let passable = 0;
-      for (let dy = -2; dy <= 2; dy++)
-        for (let dx = -2; dx <= 2; dx++) {
+      // Check 2-tile buffer is all plains (no forest/water/mountain touching roads)
+      let allPlains = true;
+      for (let dy = -2; dy <= 2 && allPlains; dy++)
+        for (let dx = -2; dx <= 2 && allPlains; dx++) {
           const nx = x + dx, ny = y + dy;
-          if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && isPassable(biomes[ny][nx])) passable++;
+          if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) { allPlains = false; break; }
+          if (biomes[ny][nx] !== 'plains') allPlains = false;
         }
-      if (passable < 15) continue; // need mostly open area
+      if (!allPlains) continue;
       // Distance from other villages
       const closest = startPositions.reduce((d, p) => Math.min(d, Math.abs(p.x - x) + Math.abs(p.y - y)), Infinity);
       if (closest < minDist) continue;
-      const score = passable + closest * 0.1;
+      const score = closest * 0.1;
       if (score > bestScore) { bestScore = score; best = { x, y }; }
     }
     if (best) startPositions.push(best);
@@ -307,16 +308,14 @@ export function createWorld(options: CreateWorldOptions): WorldState {
   const tribeColors = allTribeColors.slice(0, numVillages);
   const tribeNames = allTribeNames.slice(0, numVillages);
 
-  // Clear small area around start positions so entities can spawn
+  // Clear area around start positions — 2 tile buffer of plains (no forest/water/mountain)
   for (const sp of startPositions) {
     for (let dy = -2; dy <= 2; dy++) {
       for (let dx = -2; dx <= 2; dx++) {
-        if (Math.abs(dx) + Math.abs(dy) <= 2) {
-          const nx = sp.x + dx;
-          const ny = sp.y + dy;
-          if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
-            if (!isPassable(biomes[ny][nx])) biomes[ny][nx] = 'plains';
-          }
+        const nx = sp.x + dx;
+        const ny = sp.y + dy;
+        if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+          if (biomes[ny][nx] !== 'plains') biomes[ny][nx] = 'plains';
         }
       }
     }
@@ -520,7 +519,7 @@ function detectInteractions(
 
 // --- Pheromone mating: male in range + fertile female → pregnancy chance ---
 
-function pheromoneMating(entities: Entity[], log: LogEntry[], tickNum: number): Entity[] {
+function pheromoneMating(entities: Entity[], villages: Village[], log: LogEntry[], tickNum: number): Entity[] {
   const updated = [...entities];
   const matedMaleIds = new Set<string>();
 
@@ -543,6 +542,14 @@ function pheromoneMating(entities: Entity[], log: LogEntry[], tickNum: number): 
       if (female.birthCooldown > 0) continue;
       if (female.tribe !== male.tribe) continue;
       if (!female.homeId) continue; // only females with a home can get pregnant
+
+      // Food-based fertility: village needs at least 2 food per person
+      const village = villages.find(v => v.tribe === female.tribe);
+      if (village) {
+        const tribePop = entities.filter(e => e.tribe === female.tribe).length;
+        const totalFood = village.meatStore + village.plantStore;
+        if (totalFood < tribePop * 2) continue; // too hungry to reproduce
+      }
 
       const dist = manhattan(male.position, female.position);
       if (dist > range) continue;
@@ -1078,8 +1085,22 @@ export function tick(state: WorldState): WorldState {
         }
       }
       if (nearestFruitTree && Math.random() < 0.15) {
-        // Move toward food ~15% of ticks — relaxed grazing, not frantic running
+        // Move toward food ~15% of ticks
         newPos = stepToward(a.position, nearestFruitTree.position, biomes, gridSize);
+      } else if (a.reproTimer === 0 && Math.random() < 0.2) {
+        // Seek mate: move toward nearest opposite-gender animal (~20% of ticks)
+        const oppositeGender = a.gender === 'male' ? 'female' : 'male';
+        let nearestMate: Animal | undefined;
+        for (const other of animals) {
+          if (other.id === a.id || other.gender !== oppositeGender) continue;
+          const d = manhattan(a.position, other.position);
+          if (d > 0 && d <= 6 && (!nearestMate || d < manhattan(a.position, nearestMate.position))) {
+            nearestMate = other;
+          }
+        }
+        newPos = nearestMate
+          ? stepToward(a.position, nearestMate.position, biomes, gridSize)
+          : a.position;
       } else {
         // Idle — stay put most ticks, occasional wander (~5% chance)
         newPos = Math.random() < 0.05
@@ -1123,7 +1144,7 @@ export function tick(state: WorldState): WorldState {
   }
   animals.push(...fedBabyAnimals);
 
-  // --- Step 5b: Reproduce animals ---
+  // --- Step 5b: Reproduce animals (same tile, M+F) ---
   if (animals.length < animalMax) {
     const animalTiles = new Map<number, Animal[]>();
     for (const a of animals) {
@@ -1133,22 +1154,17 @@ export function tick(state: WorldState): WorldState {
       animalTiles.set(key, group);
     }
     const babyAnimals: Animal[] = [];
-    for (const [key, group] of animalTiles) {
+    for (const [, group] of animalTiles) {
       const readyMales = group.filter(a => a.gender === 'male' && a.reproTimer === 0);
       const readyFemales = group.filter(a => a.gender === 'female' && a.reproTimer === 0);
       if (readyMales.length > 0 && readyFemales.length > 0 && animals.length + babyAnimals.length < animalMax) {
         readyMales[0].reproTimer = ANIMAL_REPRO_INTERVAL;
         readyFemales[0].reproTimer = ANIMAL_REPRO_INTERVAL;
-        const px = key % gridSize;
-        const py = Math.floor(key / gridSize);
-        const ns = neighbors({ x: px, y: py }, gridSize).filter(
-          n => isPassable(biomes[n.y][n.x])
-        );
+        const ns = neighbors(readyFemales[0].position, gridSize).filter(n => isPassable(biomes[n.y][n.x]));
         if (ns.length === 0) continue;
-        const spot = ns[Math.floor(Math.random() * ns.length)];
         babyAnimals.push({
           id: generateId('a'),
-          position: spot,
+          position: ns[Math.floor(Math.random() * ns.length)],
           gender: Math.random() < 0.5 ? 'male' : 'female',
           reproTimer: ANIMAL_REPRO_INTERVAL,
         });
@@ -1189,7 +1205,7 @@ export function tick(state: WorldState): WorldState {
   });
 
   // --- Step 7: Pheromone mating (every tick, not just night) ---
-  entities = pheromoneMating(entities, log, tickNum);
+  entities = pheromoneMating(entities, updatedVillages, log, tickNum);
 
   // --- Step 7b: Homeless females claim free houses ---
   for (let i = 0; i < entities.length; i++) {
