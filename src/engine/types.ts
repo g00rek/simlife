@@ -78,6 +78,7 @@ export const TRAIT_ENERGY_COST = 0.15; // extra energy drain per total trait poi
 export interface Animal {
   id: string;
   position: Position;
+  gender: Gender;
   reproTimer: number; // ticks until next reproduction attempt
 }
 

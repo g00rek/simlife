@@ -260,23 +260,29 @@ function drawAnimal(ctx: CanvasRenderingContext2D, cx: number, cy: number, cellS
   ctx.stroke();
 }
 
+// Animal idle animation frames (2 frames each)
+const ANIMAL_FRAMES = {
+  female: [{ sx: 0, sy: 464 }, { sx: 8, sy: 464 }],
+  male:   [{ sx: 8, sy: 464 }, { sx: 8, sy: 472 }],
+};
+
 function drawAnimalSprite(
   ctx: CanvasRenderingContext2D,
   sprites: SpriteAssets,
   cx: number,
   cy: number,
   cellSize: number,
+  gender: 'male' | 'female',
+  frameIdx: number,
 ) {
-  const srcX = 0;
-  const srcY = 472;
-  const srcW = 8;
-  const srcH = 8;
+  const frames = ANIMAL_FRAMES[gender];
+  const frame = frames[frameIdx % frames.length];
   const dstW = cellSize * 0.86;
   const dstH = cellSize * 0.86;
   const dx = Math.round(cx - dstW / 2);
   const dy = Math.round(cy - dstH / 2);
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(sprites.animals, srcX, srcY, srcW, srcH, dx, dy, Math.round(dstW), Math.round(dstH));
+  ctx.drawImage(sprites.animals, frame.sx, frame.sy, 8, 8, dx, dy, Math.round(dstW), Math.round(dstH));
 }
 
 type ActionBadge = 'fight' | 'train' | 'hunt' | 'gather' | 'chop' | 'build';
@@ -489,7 +495,8 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       const pos = lerpPos(prev, animal.position, t);
       const cx = pos.x * cellSize + cellSize / 2;
       const cy = pos.y * cellSize + cellSize / 2;
-      if (sprites) drawAnimalSprite(ctx, sprites, cx, cy, cellSize);
+      const animalFrame = Math.floor(frameCount / 30) % 2; // swap every ~0.5s at 60fps
+      if (sprites) drawAnimalSprite(ctx, sprites, cx, cy, cellSize, animal.gender, animalFrame);
       else drawAnimal(ctx, cx, cy, cellSize);
     }
 

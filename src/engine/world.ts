@@ -406,6 +406,7 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     animals.push({
       id: generateId('a'),
       position: randomPassablePos(biomes, gridSize),
+      gender: i < animalCount / 2 ? 'male' : 'female',
       reproTimer: Math.floor(Math.random() * ANIMAL_REPRO_INTERVAL),
     });
   }
@@ -1115,6 +1116,7 @@ export function tick(state: WorldState): WorldState {
     fedBabyAnimals.push({
       id: generateId('a'),
       position: spots[Math.floor(Math.random() * spots.length)],
+      gender: Math.random() < 0.5 ? 'male' : 'female',
       reproTimer: ANIMAL_REPRO_INTERVAL,
     });
   }
@@ -1131,10 +1133,11 @@ export function tick(state: WorldState): WorldState {
     }
     const babyAnimals: Animal[] = [];
     for (const [key, group] of animalTiles) {
-      const ready = group.filter(a => a.reproTimer === 0);
-      if (ready.length >= 2 && animals.length + babyAnimals.length < animalMax) {
-        ready[0].reproTimer = ANIMAL_REPRO_INTERVAL;
-        ready[1].reproTimer = ANIMAL_REPRO_INTERVAL;
+      const readyMales = group.filter(a => a.gender === 'male' && a.reproTimer === 0);
+      const readyFemales = group.filter(a => a.gender === 'female' && a.reproTimer === 0);
+      if (readyMales.length > 0 && readyFemales.length > 0 && animals.length + babyAnimals.length < animalMax) {
+        readyMales[0].reproTimer = ANIMAL_REPRO_INTERVAL;
+        readyFemales[0].reproTimer = ANIMAL_REPRO_INTERVAL;
         const px = key % gridSize;
         const py = Math.floor(key / gridSize);
         const ns = neighbors({ x: px, y: py }, gridSize).filter(
@@ -1145,6 +1148,7 @@ export function tick(state: WorldState): WorldState {
         babyAnimals.push({
           id: generateId('a'),
           position: spot,
+          gender: Math.random() < 0.5 ? 'male' : 'female',
           reproTimer: ANIMAL_REPRO_INTERVAL,
         });
       }
