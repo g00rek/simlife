@@ -79,6 +79,7 @@ const TREE_NORMAL = { sx: 64, sy: 408, sw: 32, sh: 32 };
 const TREE_WINTER = { sx: 64, sy: 368, sw: 32, sh: 32 };
 const TREE_FRUIT_EMPTY = { sx: 160, sy: 488, sw: 32, sh: 32 }; // fruit tree, no fruit
 const TREE_FRUIT_FULL = { sx: 112, sy: 488, sw: 32, sh: 32 };  // fruit tree, with fruit
+const TREE_STUMP = { sx: 80, sy: 720, sw: 16, sh: 8 };         // chopped stump (2 tiles wide)
 
 export function drawTreeLayer(
   ctx: CanvasRenderingContext2D,
@@ -92,9 +93,20 @@ export function drawTreeLayer(
   const drawSize = Math.round(cellSize * 2);
 
   // Sort by y ascending (back to front: lower rows cover upper)
-  const sorted = [...trees].filter(t => !t.chopped).sort((a, b) => a.position.y - b.position.y);
+  const sorted = [...trees].sort((a, b) => a.position.y - b.position.y);
 
   for (const tree of sorted) {
+    if (tree.chopped) {
+      // Stump sprite: 16×8, drawn at bottom-center of tile
+      const dstW = cellSize;
+      const dstH = cellSize * (TREE_STUMP.sh / TREE_STUMP.sw); // preserve aspect ratio
+      const px = tree.position.x * cellSize;
+      const py = tree.position.y * cellSize + cellSize - dstH;
+      ctx.drawImage(overworld, TREE_STUMP.sx, TREE_STUMP.sy, TREE_STUMP.sw, TREE_STUMP.sh,
+        px, py, Math.round(dstW), Math.round(dstH));
+      continue;
+    }
+
     let src;
     if (season === 'winter') {
       src = TREE_WINTER;

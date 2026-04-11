@@ -762,6 +762,13 @@ export function tick(state: WorldState): WorldState {
         resolvedIds.add(chopper.id);
         const chopV = getVillage(chopper.tribe);
         if (chopV) chopV.woodStore += WOOD_PER_CHOP;
+        // Mark tree as chopped (stump)
+        const treeIdx = trees.findIndex(t =>
+          !t.chopped && t.position.x === chopper.position.x && t.position.y === chopper.position.y
+        );
+        if (treeIdx >= 0) {
+          trees[treeIdx] = { ...trees[treeIdx], chopped: true, choppedAt: tickNum, hasFruit: false, fruitPortions: 0 };
+        }
         logEvent(chopper, 'chop', { detail: `+${WOOD_PER_CHOP} wood` });
       }
     } else if (action === 'building') {
@@ -1015,7 +1022,8 @@ export function tick(state: WorldState): WorldState {
                 entities[idx] = entity;
               }
             } else if (goalType === 'chop') {
-              if (biomes[entity.position.y][entity.position.x] === 'forest') {
+              const standingTree = trees.some(t => !t.chopped && t.position.x === entity.position.x && t.position.y === entity.position.y);
+              if (biomes[entity.position.y][entity.position.x] === 'forest' && standingTree) {
                 entity = { ...entity, state: 'chopping' as const, stateTimer: CHOPPING_DURATION, goal: undefined };
                 entities[idx] = entity;
               }
