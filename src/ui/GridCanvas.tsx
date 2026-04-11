@@ -225,9 +225,9 @@ const ACTION_SPRITES: Record<ActionBadge, { sheet: keyof SpriteAssets; sx: numbe
 
 function drawActionBadge(ctx: CanvasRenderingContext2D, sprites: SpriteAssets, cx: number, cy: number, cellSize: number, kind: ActionBadge) {
   const info = ACTION_SPRITES[kind];
-  const s = Math.round(cellSize * 0.4);
+  const s = Math.round(cellSize * 0.45);
   const dx = Math.round(cx - s / 2);
-  const dy = Math.round(cy - cellSize * 0.55);
+  const dy = Math.round(cy - cellSize * 1.2);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(sprites[info.sheet], info.sx, info.sy, 8, 8, dx, dy, s, s);
 }
