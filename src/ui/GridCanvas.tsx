@@ -400,7 +400,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     }
 
     // --- Layer 1b: Grass food ---
-    drawGrassLayer(ctx, sprites.overworld, world.grass, world.gridSize, cellSize);
+    drawGrassLayer(ctx, sprites.overworld, world.grass, world.biomes, world.gridSize, cellSize);
 
     // --- Layer 2: Trees (shared renderer) ---
     if (sprites) {

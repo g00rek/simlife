@@ -392,10 +392,18 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     }
   }
 
-  // Initialize grass grid: plains tiles start with 1-2 random grass
+  // Initialize grass grid: some plains tiles start with grass (not near water)
+  const isNearWater = (x: number, y: number) => {
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && biomes[ny][nx] === 'water') return true;
+      }
+    return false;
+  };
   const grass: number[][] = Array.from({ length: gridSize }, (_, y) =>
     Array.from({ length: gridSize }, (_, x) =>
-      biomes[y][x] === 'plains' ? Math.floor(Math.random() * 2) + 1 : 0
+      biomes[y][x] === 'plains' && !isNearWater(x, y) && Math.random() < 0.4 ? 1 : 0
     )
   );
 
@@ -1198,12 +1206,19 @@ export function tick(state: WorldState): WorldState {
     return t;
   });
 
-  // --- Grass regrowth on plains ---
+  // --- Grass regrowth on plains (not near water/shore) ---
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
-      if (biomes[y][x] === 'plains' && grass[y][x] < GRASS_MAX_PER_TILE) {
-        if (Math.random() < GRASS_GROW_CHANCE) grass[y][x]++;
-      }
+      if (biomes[y][x] !== 'plains' || grass[y][x] >= GRASS_MAX_PER_TILE) continue;
+      // Skip tiles adjacent to water
+      let shore = false;
+      for (let dy = -1; dy <= 1 && !shore; dy++)
+        for (let dx = -1; dx <= 1 && !shore; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && biomes[ny][nx] === 'water') shore = true;
+        }
+      if (shore) continue;
+      if (Math.random() < GRASS_GROW_CHANCE) grass[y][x]++;
     }
   }
 

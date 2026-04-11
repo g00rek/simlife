@@ -47,11 +47,12 @@ export function drawSurfaceLayer(
   }
 }
 
-// Draw grass food sprites on tiles that have grass
+// Draw grass food sprites — skip tiles adjacent to water (shore)
 export function drawGrassLayer(
   ctx: CanvasRenderingContext2D,
   overworld: HTMLImageElement,
   grass: number[][],
+  biomes: Biome[][],
   gridSize: number,
   cellSize: number,
 ) {
@@ -59,6 +60,17 @@ export function drawGrassLayer(
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grass[y][x] <= 0) continue;
+      // Skip shore tiles (plains adjacent to water)
+      let nearWater = false;
+      for (let dy = -1; dy <= 1 && !nearWater; dy++) {
+        for (let dx = -1; dx <= 1 && !nearWater; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && biomes[ny][nx] === 'water') {
+            nearWater = true;
+          }
+        }
+      }
+      if (nearWater) continue;
       const px = Math.floor(x * cellSize);
       const py = Math.floor(y * cellSize);
       const s = Math.round(cellSize);
