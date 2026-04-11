@@ -110,53 +110,6 @@ function MapSpritePreview({
   return <canvas ref={canvasRef} width={72} height={72} style={{ borderRadius: 6, border: '1px solid #30384c', imageRendering: 'pixelated' }} />;
 }
 
-// Composite sprite: assembles multiple 8x8 tiles into one preview
-function CompositeSprite({ tiles, cols, scale = 6 }: {
-  tiles: Array<{ src: string; sx: number; sy: number }>;
-  cols: number;
-  scale?: number;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rows = Math.ceil(tiles.length / cols);
-  const w = cols * 8 * scale;
-  const h = rows * 8 * scale;
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d')!;
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#1b1f2b';
-    ctx.fillRect(0, 0, w, h);
-
-    // Load unique images
-    const srcs = [...new Set(tiles.map(t => t.src))];
-    const imgs = new Map<string, HTMLImageElement>();
-    let loaded = 0;
-    for (const s of srcs) {
-      const img = new Image();
-      img.onload = () => {
-        imgs.set(s, img);
-        loaded++;
-        if (loaded === srcs.length) {
-          ctx.clearRect(0, 0, w, h);
-          ctx.fillStyle = '#1b1f2b';
-          ctx.fillRect(0, 0, w, h);
-          tiles.forEach((t, i) => {
-            const col = i % cols;
-            const row = Math.floor(i / cols);
-            const img = imgs.get(t.src)!;
-            ctx.drawImage(img, t.sx, t.sy, 8, 8, col * 8 * scale, row * 8 * scale, 8 * scale, 8 * scale);
-          });
-        }
-      };
-      img.src = s;
-    }
-  }, [tiles, cols, scale, w, h]);
-
-  return <canvas ref={canvasRef} width={w} height={h} style={{ borderRadius: 6, border: '1px solid #30384c', imageRendering: 'pixelated' as const }} />;
-}
-
 // Animated house: static 3x3 tiles + animated chimney on top-right
 function AnimatedHouse({ roofSx = 40, roofSy, label }: { roofSx?: number; roofSy: number; label: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
