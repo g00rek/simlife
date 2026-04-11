@@ -263,7 +263,7 @@ function drawAnimal(ctx: CanvasRenderingContext2D, cx: number, cy: number, cellS
 // Animal idle animation frames (2 frames each)
 const ANIMAL_FRAMES = {
   female: [{ sx: 0, sy: 464 }, { sx: 8, sy: 464 }],
-  male:   [{ sx: 8, sy: 464 }, { sx: 8, sy: 472 }],
+  male:   [{ sx: 0, sy: 472 }, { sx: 8, sy: 472 }],
 };
 
 function drawAnimalSprite(
