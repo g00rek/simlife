@@ -150,9 +150,9 @@ export const GATHERING_DURATION = 0; // instant on contact
 // Energy
 export const ENERGY_MAX = 100;
 export const ENERGY_START = 80;
-export const ENERGY_DRAIN_INTERVAL = 15; // lose energy less often to reduce food pressure
-export const ENERGY_MEAT = 25;
-export const ENERGY_PLANT = 18;
+export const ENERGY_DRAIN_INTERVAL = 25; // lose energy slowly — food is scarce
+export const ENERGY_MEAT = 30;           // meat is very nutritious
+export const ENERGY_PLANT = 20;          // fruit is decent
 export const ENERGY_MATING_MIN = 30;
 export const HUNGER_THRESHOLD = 40; // eat from pantry when truly hungry
 export const CHILD_AGE = 3; // children don't work/fight/lose energy (years)

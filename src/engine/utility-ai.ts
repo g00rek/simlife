@@ -5,7 +5,6 @@ import {
   FOOD_RESERVE_MIN,
   FOOD_RESERVE_PER_PERSON,
   HUNGER_THRESHOLD,
-  PLANT_RESERVE_MIN,
   NEAR_HOME_RANGE,
   HOUSE_CAPACITY,
   HOUSE_WOOD_COST,
@@ -130,11 +129,11 @@ function scoreGather(ctx: AIContext): number {
   if (!ctx.village) return 0;
   const target = foodReserveTarget(ctx);
   const totalFood = totalVillageFood(ctx);
-  const plantReserveNeed = Math.max(0, (PLANT_RESERVE_MIN - ctx.village.plantStore) / PLANT_RESERVE_MIN);
-  const foodNeed = Math.max(0, (target - totalFood) / target, plantReserveNeed * 0.8);
-  if (foodNeed === 0) return 0;
+  const foodNeed = Math.max(0, (target - totalFood) / target);
   const panicBoost = ctx.village.plantStore < PANIC_PLANT_THRESHOLD ? 0.2 : 0;
-  return Math.min(1, foodNeed * 0.6 + panicBoost);
+  // Always gather if fruit trees visible — stockpile for winter
+  const stockpileBoost = ctx.nearestFruitTree ? 0.3 : 0;
+  return Math.min(1, Math.max(foodNeed * 0.6 + panicBoost, stockpileBoost));
 }
 
 function scoreReturnHome(ctx: AIContext): number {
