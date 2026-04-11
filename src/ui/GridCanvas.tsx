@@ -357,11 +357,24 @@ function drawActionBadge(ctx: CanvasRenderingContext2D, cx: number, cy: number, 
   ctx.fillText(p.label, cx, by + 0.5);
 }
 
+// --- Position interpolation ---
+interface PosRecord { x: number; y: number }
+
+function lerpPos(prev: PosRecord, curr: PosRecord, t: number): PosRecord {
+  return { x: prev.x + (curr.x - prev.x) * t, y: prev.y + (curr.y - prev.y) * t };
+}
+
 export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: GridCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const backgroundCacheRef = useRef<{ key: string; canvas: HTMLCanvasElement } | null>(null);
   const spritesRef = useRef<SpriteAssets | null>(null);
   const [, setSpritesVersion] = useState(0);
+
+  // Interpolation state
+  const prevEntityPos = useRef<Map<string, PosRecord>>(new Map());
+  const prevAnimalPos = useRef<Map<string, PosRecord>>(new Map());
+  const lastTickRef = useRef(0);
+  const tickTimeRef = useRef(performance.now());
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -405,16 +418,34 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     return () => { cancelled = true; };
   }, []);
 
-  // Animation tick — increments every ~500ms to drive water/fire animations
-  const [animTick, setAnimTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setAnimTick(t => t + 1), 100);
-    return () => clearInterval(id);
-  }, []);
+  // Track previous positions: when tick changes, what was "current" becomes "prev"
+  const currEntityPos = useRef<Map<string, PosRecord>>(new Map());
+  const currAnimalPos = useRef<Map<string, PosRecord>>(new Map());
 
+  if (world.tick !== lastTickRef.current) {
+    // Promote current → prev
+    prevEntityPos.current = currEntityPos.current;
+    prevAnimalPos.current = currAnimalPos.current;
+    lastTickRef.current = world.tick;
+    tickTimeRef.current = performance.now();
+  }
+  // Always snapshot current positions
+  const eMap = new Map<string, PosRecord>();
+  for (const e of world.entities) eMap.set(e.id, { ...e.position });
+  currEntityPos.current = eMap;
+  const aMap = new Map<string, PosRecord>();
+  for (const a of world.animals) aMap.set(a.id, { ...a.position });
+  currAnimalPos.current = aMap;
+
+  // rAF render loop — runs at 60fps, interpolates positions between ticks
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    let raf: number;
+    let frameCount = 0;
+
+    const draw = () => {
+    frameCount++;
 
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.max(1, Math.floor(size * dpr));
@@ -423,8 +454,13 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     canvas.style.height = `${size}px`;
 
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) { raf = requestAnimationFrame(draw); return; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Interpolation progress: 0→1 between ticks. Cap at 1 so entities don't overshoot.
+    const LERP_DURATION = 200; // ms to complete movement (matches ~300ms tick speed)
+    const elapsed = performance.now() - tickTimeRef.current;
+    const t = Math.min(1, elapsed / LERP_DURATION);
 
     const cellSize = size / world.gridSize;
     const ticksPerMonth = TICKS_PER_DAY * 10;
@@ -471,7 +507,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
 
     // --- Layer 1: Water + Shore (animated, shared renderer) ---
     if (sprites) {
-      drawWaterLayer(ctx, sprites.overworld, world.biomes, world.gridSize, cellSize, animTick);
+      drawWaterLayer(ctx, sprites.overworld, world.biomes, world.gridSize, cellSize, Math.floor(frameCount / 6));
     }
 
     // --- Layer 2: Trees (shared renderer) ---
@@ -484,7 +520,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       if (!village.stockpile) continue;
       const sx = village.stockpile.x * cellSize;
       const sy = village.stockpile.y * cellSize;
-      if (sprites) drawStockpileSprite(ctx, sprites, sx, sy, cellSize, village.color, animTick);
+      if (sprites) drawStockpileSprite(ctx, sprites, sx, sy, cellSize, village.color, Math.floor(frameCount / 6));
       else drawStockpile(ctx, sx, sy, cellSize, village.color);
     }
 
@@ -506,10 +542,12 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       else drawPlant(ctx, cx, cy, cellSize, hasFruit);
     }
 
-    // --- Draw animals ---
+    // --- Draw animals (interpolated) ---
     for (const animal of world.animals) {
-      const cx = animal.position.x * cellSize + cellSize / 2;
-      const cy = animal.position.y * cellSize + cellSize / 2;
+      const prev = prevAnimalPos.current.get(animal.id) ?? animal.position;
+      const pos = lerpPos(prev, animal.position, t);
+      const cx = pos.x * cellSize + cellSize / 2;
+      const cy = pos.y * cellSize + cellSize / 2;
       if (sprites) drawAnimalSprite(ctx, sprites, cx, cy, cellSize);
       else drawAnimal(ctx, cx, cy, cellSize);
     }
@@ -551,8 +589,10 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
 
       for (let i = 0; i < count; i++) {
         const entity = group[i];
-        const baseCx = entity.position.x * cellSize + cellSize / 2;
-        const baseCy = entity.position.y * cellSize + cellSize / 2;
+        const prev = prevEntityPos.current.get(entity.id) ?? entity.position;
+        const pos = lerpPos(prev, entity.position, t);
+        const baseCx = pos.x * cellSize + cellSize / 2;
+        const baseCy = pos.y * cellSize + cellSize / 2;
 
         let cx = baseCx;
         let cy = baseCy;
@@ -616,8 +656,10 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       if (isEntityAtHome(entity, world)) continue;
       if (entity.state !== 'idle' || ageInYears(entity) < CHILD_AGE) continue;
       // Skip idle entities at home (not foraging)
-      const ex = entity.position.x * cellSize + cellSize / 2;
-      const ey = entity.position.y * cellSize + cellSize / 2;
+      const ePrev = prevEntityPos.current.get(entity.id) ?? entity.position;
+      const ePos = lerpPos(ePrev, entity.position, t);
+      const ex = ePos.x * cellSize + cellSize / 2;
+      const ey = ePos.y * cellSize + cellSize / 2;
       const sense = 3 + entity.traits.perception * 2;
 
       if (entity.gender === 'male') {
@@ -696,7 +738,12 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
         );
       }
     }
-  }, [world, size, selectedId, selectedTile, animTick]);
+    raf = requestAnimationFrame(draw);
+    }; // end draw()
+
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [world, size, selectedId, selectedTile]);
 
   return (
     <canvas

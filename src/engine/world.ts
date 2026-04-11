@@ -1083,9 +1083,14 @@ export function tick(state: WorldState): WorldState {
           nearestFood = p;
         }
       }
-      newPos = nearestFood
-        ? stepToward(a.position, nearestFood.position, biomes, gridSize)
-        : randomStepBiome(a.position, gridSize, biomes);
+      if (nearestFood) {
+        newPos = stepToward(a.position, nearestFood.position, biomes, gridSize);
+      } else {
+        // Idle — stay put most ticks, occasional wander (~10% chance)
+        newPos = Math.random() < 0.1
+          ? randomStepBiome(a.position, gridSize, biomes)
+          : a.position;
+      }
     }
     return { ...a, position: newPos, reproTimer: Math.max(0, a.reproTimer - 1) };
   });
