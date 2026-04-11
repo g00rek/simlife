@@ -12,6 +12,8 @@ const MISC_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Misc.png`;
 const OVERWORLD_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Overworld.png`;
 const ANIMALS_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Animals.png`;
 const INTERFACE_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Interface.png`;
+const WALLS_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Walls.png`;
+const ITEMS_SHEET_URL = `${MINI_MEDIEVAL_BASE}/Items.png`;
 
 interface GridCanvasProps {
   world: WorldState;
@@ -27,6 +29,8 @@ interface SpriteAssets {
   misc: HTMLImageElement;
   overworld: HTMLImageElement;
   ui: HTMLImageElement;
+  walls: HTMLImageElement;
+  items: HTMLImageElement;
   animals: HTMLImageElement;
 }
 
@@ -209,30 +213,23 @@ function drawAnimalSprite(
 
 type ActionBadge = 'fight' | 'train' | 'hunt' | 'gather' | 'chop' | 'build';
 
-function drawActionBadge(ctx: CanvasRenderingContext2D, cx: number, cy: number, cellSize: number, kind: ActionBadge) {
-  const palette: Record<ActionBadge, { bg: string; fg: string; label: string }> = {
-    fight: { bg: '#b83b5e', fg: '#fff', label: 'F' },
-    train: { bg: '#4e6bb8', fg: '#fff', label: 'T' },
-    hunt: { bg: '#8d6e63', fg: '#fff', label: 'H' },
-    gather: { bg: '#3e8f4e', fg: '#fff', label: 'G' },
-    chop: { bg: '#a0733d', fg: '#fff', label: 'C' },
-    build: { bg: '#7a5ec9', fg: '#fff', label: 'B' },
-  };
-  const p = palette[kind];
-  const r = Math.max(5, cellSize * 0.17);
-  const by = cy - cellSize * 0.42;
-  ctx.beginPath();
-  ctx.arc(cx, by, r, 0, Math.PI * 2);
-  ctx.fillStyle = p.bg;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.65)';
-  ctx.lineWidth = Math.max(0.8, cellSize * 0.03);
-  ctx.stroke();
-  ctx.fillStyle = p.fg;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `${Math.max(8, Math.floor(cellSize * 0.24))}px system-ui`;
-  ctx.fillText(p.label, cx, by + 0.5);
+// Action badge sprites: { sheet, sx, sy }
+const ACTION_SPRITES: Record<ActionBadge, { sheet: keyof SpriteAssets; sx: number; sy: number }> = {
+  build:  { sheet: 'walls', sx: 72, sy: 24 },
+  chop:   { sheet: 'items', sx: 16, sy: 56 },
+  fight:  { sheet: 'items', sx: 0,  sy: 16 },
+  train:  { sheet: 'misc',  sx: 0,  sy: 384 },
+  hunt:   { sheet: 'items', sx: 0,  sy: 24 },
+  gather: { sheet: 'items', sx: 0,  sy: 160 },
+};
+
+function drawActionBadge(ctx: CanvasRenderingContext2D, sprites: SpriteAssets, cx: number, cy: number, cellSize: number, kind: ActionBadge) {
+  const info = ACTION_SPRITES[kind];
+  const s = Math.round(cellSize * 0.4);
+  const dx = Math.round(cx - s / 2);
+  const dy = Math.round(cy - cellSize * 0.55);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sprites[info.sheet], info.sx, info.sy, 8, 8, dx, dy, s, s);
 }
 
 // --- Position interpolation ---
@@ -267,37 +264,28 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
 
   useEffect(() => {
     let cancelled = false;
-    const units = new Image();
-    const structures = new Image();
-    const misc = new Image();
-    const overworld = new Image();
-    const animals = new Image();
-    const ui = new Image();
+    const imgs = {
+      units: new Image(), structures: new Image(), misc: new Image(),
+      overworld: new Image(), animals: new Image(), ui: new Image(),
+      walls: new Image(), items: new Image(),
+    };
+    const total = Object.keys(imgs).length;
     let loaded = 0;
     const done = () => {
       loaded++;
-      if (loaded < 6 || cancelled) return;
-      spritesRef.current = { units, structures, misc, overworld, animals, ui };
+      if (loaded < total || cancelled) return;
+      spritesRef.current = imgs;
       setSpritesVersion(v => v + 1);
     };
-    units.onload = done;
-    structures.onload = done;
-    misc.onload = done;
-    overworld.onload = done;
-    animals.onload = done;
-    ui.onload = done;
-    units.onerror = done;
-    structures.onerror = done;
-    misc.onerror = done;
-    overworld.onerror = done;
-    animals.onerror = done;
-    ui.onerror = done;
-    units.src = UNITS_SHEET_URL;
-    structures.src = STRUCTURES_SHEET_URL;
-    misc.src = MISC_SHEET_URL;
-    overworld.src = OVERWORLD_SHEET_URL;
-    animals.src = ANIMALS_SHEET_URL;
-    ui.src = INTERFACE_SHEET_URL;
+    for (const img of Object.values(imgs)) { img.onload = done; img.onerror = done; }
+    imgs.units.src = UNITS_SHEET_URL;
+    imgs.structures.src = STRUCTURES_SHEET_URL;
+    imgs.misc.src = MISC_SHEET_URL;
+    imgs.overworld.src = OVERWORLD_SHEET_URL;
+    imgs.animals.src = ANIMALS_SHEET_URL;
+    imgs.ui.src = INTERFACE_SHEET_URL;
+    imgs.walls.src = WALLS_SHEET_URL;
+    imgs.items.src = ITEMS_SHEET_URL;
     return () => { cancelled = true; };
   }, []);
 
@@ -599,7 +587,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     // Draw tile action badges
     if (tileIcons.length < 300) {
       for (const { cx, cy, kind } of tileIcons) {
-        drawActionBadge(ctx, cx, cy, cellSize, kind);
+        drawActionBadge(ctx, sprites, cx, cy, cellSize, kind);
       }
     }
 
