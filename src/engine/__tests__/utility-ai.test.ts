@@ -47,7 +47,7 @@ function makeContext(overrides: Partial<AIContext> = {}): AIContext {
     entity: makeEntity(),
     village,
     nearHome: true,
-    isNight: false,
+
     villageNeedsHouses: false,
     tribePopulation: 12,
     animalPopulation: 30,
@@ -194,14 +194,13 @@ describe('decideAction hunt behavior', () => {
     expect(action.type).toBe('return_home');
   });
 
-  it('male at night hunts when village meat is low and energy is safe', () => {
+  it('male hunts when village meat is low and energy is safe', () => {
     const action = decideAction(
       makeContext({
         entity: makeEntity({
           gender: 'male',
           energy: 80,
         }),
-        isNight: true,
         nearHome: false,
         nearestAnimal: { pos: { x: 8, y: 5 }, dist: 3 },
         village: {
@@ -217,14 +216,13 @@ describe('decideAction hunt behavior', () => {
     expect(action.type).toBe('go_hunt');
   });
 
-  it('hungry male at night hunts for survival when prey is visible', () => {
+  it('hungry male hunts for survival when prey is visible', () => {
     const action = decideAction(
       makeContext({
         entity: makeEntity({
           gender: 'male',
           energy: 20,
         }),
-        isNight: true,
         nearHome: false,
         nearestAnimal: { pos: { x: 8, y: 5 }, dist: 3 },
         village: {

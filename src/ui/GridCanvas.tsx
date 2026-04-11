@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import type { WorldState, Entity, Village } from '../engine/types';
-import { CHILD_AGE, TICKS_PER_DAY, DAY_TICKS, TICKS_PER_YEAR } from '../engine/types';
+import { CHILD_AGE, TICKS_PER_DAY, TICKS_PER_YEAR } from '../engine/types';
 import { ageInYears } from '../engine/world';
 import { drawSurfaceLayer, drawWaterLayer, drawTreeLayer, drawGrassLayer } from './terrain/renderer';
 import type { Season } from './terrain/renderer';
@@ -610,13 +610,6 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
           Math.round(sel.cx - es / 2), Math.round(sel.cy - es / 2), es, es);
       }
     }
-    // Night overlay
-    const isNight = (world.tick % TICKS_PER_DAY) >= DAY_TICKS;
-    if (isNight) {
-      ctx.fillStyle = 'rgba(10, 12, 30, 0.35)';
-      ctx.fillRect(0, 0, size, size);
-    }
-
     raf = requestAnimationFrame(draw);
     }; // end draw()
 

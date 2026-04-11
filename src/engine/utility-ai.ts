@@ -7,8 +7,6 @@ import {
   FOOD_RESERVE_PER_PERSON,
   HUNGER_THRESHOLD,
   PLANT_RESERVE_MIN,
-  TICKS_PER_DAY,
-  DAY_TICKS,
   NEAR_HOME_RANGE,
 } from './types';
 import { ageInYears } from './world';
@@ -45,7 +43,6 @@ export interface AIContext {
   village?: Village;
   nearHome: boolean;
   homeTarget?: Position;
-  isNight: boolean;
   nearestAnimal?: { pos: Position; dist: number };
   nearestFruitTree?: { pos: Position; dist: number };
   nearestForest?: { pos: Position; dist: number };
@@ -56,8 +53,6 @@ export interface AIContext {
   gridSize: number;
 }
 
-const NIGHT_HUNT_MEAT_THRESHOLD = 20;
-const NIGHT_HUNT_MIN_ENERGY = 35;
 const PANIC_MEAT_THRESHOLD = 20;
 const PANIC_PLANT_THRESHOLD = 20;
 
@@ -171,23 +166,6 @@ export function decideAction(ctx: AIContext): AIAction {
   const survScore = scoreSurvival(ctx);
   const survivalAction = survivalForageAction(ctx, survScore);
 
-  // Night: everyone returns home, near home = rest. Hungry adults can still forage.
-  if (ctx.isNight) {
-    if (survivalAction) return survivalAction;
-    const isAdultMale = e.gender === 'male' && ageInYears(e) >= CHILD_AGE;
-    const canNightHunt = !!ctx.village
-      && !ctx.nearHome
-      && isAdultMale
-      && e.energy >= NIGHT_HUNT_MIN_ENERGY
-      && ctx.village.meatStore < NIGHT_HUNT_MEAT_THRESHOLD;
-    if (canNightHunt) {
-      if (ctx.nearestAnimal) return { type: 'go_hunt', target: ctx.nearestAnimal.pos };
-      return { type: 'wander' };
-    }
-    if (!ctx.nearHome && ctx.homeTarget) return { type: 'return_home' };
-    return { type: 'rest' };
-  }
-
   // Score all actions
   const scores: Array<{ key: string; score: number; action: () => AIAction }> = [];
 
@@ -278,7 +256,7 @@ export function buildAIContext(
   entities: Entity[],
   biomes: Biome[][],
   gridSize: number,
-  tick: number = 0,
+  _tick: number = 0,
   houses: House[] = [],
 ): AIContext {
   const village = villages.find(v => v.tribe === entity.tribe);
@@ -378,7 +356,6 @@ export function buildAIContext(
     }
   }
 
-  const isNight = (tick % TICKS_PER_DAY) >= DAY_TICKS;
   const tribePopulation = village
     ? entities.filter(e => e.tribe === village.tribe).length
     : 0;
@@ -387,7 +364,6 @@ export function buildAIContext(
     village,
     nearHome,
     homeTarget,
-    isNight,
     nearestAnimal,
     nearestFruitTree,
     nearestForest,
