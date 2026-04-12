@@ -1108,7 +1108,6 @@ export function tick(state: WorldState): WorldState {
         }
 
         // Allow passing through occupied tiles if goal is further away
-        const isGoalHere = entity.goal?.target && moveTarget.x === entity.goal.target.x && moveTarget.y === entity.goal.target.y;
         // Allow passing through AND arriving at occupied tiles (actions are instant)
         const canPass = moveGrid[moveTarget.y][moveTarget.x] < 2;
         if (canPass) {
