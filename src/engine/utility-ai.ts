@@ -139,10 +139,11 @@ function scoreGather(ctx: AIContext): number {
   if (!ctx.village) return 0;
   const target = foodReserveTarget(ctx);
   const totalFood = totalVillageFood(ctx);
+  // Don't gather if reserves are way above target
+  if (totalFood >= target * 2) return 0;
   const foodNeed = Math.max(0, (target - totalFood) / target);
   const panicBoost = ctx.totalPlant < PANIC_PLANT_THRESHOLD ? 0.2 : 0;
-  // Always gather if fruit trees visible — stockpile for winter
-  const stockpileBoost = ctx.nearestFruitTree ? 0.3 : 0;
+  const stockpileBoost = ctx.nearestFruitTree && totalFood < target ? 0.3 : 0;
   return Math.min(1, Math.max(foodNeed * 0.6 + panicBoost, stockpileBoost));
 }
 

@@ -952,8 +952,6 @@ export function tick(state: WorldState): WorldState {
       if (resolvedIds.has(e.id)) {
         let energy = e.energy;
         let meat = e.meat;
-        const myVillage = getVillage(e.tribe);
-
         if (e.state === 'chopping') {
           return { ...e, state: 'idle' as const, stateTimer: 0, energy: Math.max(0, energy - 10), meat };
         } else if (e.state === 'building') {
@@ -983,11 +981,9 @@ export function tick(state: WorldState): WorldState {
           if (hadPrey) {
             const direct = eatDirectlyToThreshold(e, ENERGY_MEAT, MEAT_PORTIONS_PER_HUNT);
             energy = direct.entity.energy;
-            const surplus = direct.remainingPortions;
-            if (myVillage) myVillage.meatStore += surplus;
+            // Surplus handled by carrying system in goal-arrival
           }
         } else if (e.state === 'gathering') {
-          // Fruit from tree at this position — check if any tree here had fruit taken
           const fruitTree = trees.find(tr =>
             tr.fruiting &&
             tr.position.x === e.position.x &&
@@ -996,8 +992,7 @@ export function tick(state: WorldState): WorldState {
           if (fruitTree) {
             const direct = eatDirectlyToThreshold(e, ENERGY_PLANT, TREE_FRUIT_PORTIONS);
             energy = direct.entity.energy;
-            const surplus = direct.remainingPortions;
-            if (myVillage && villageNeedsPlants(myVillage, entities)) myVillage.plantStore += surplus;
+            // Surplus handled by carrying system in goal-arrival
           }
         } else if (e.state === 'pregnant') {
           return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat, fatherTraits: undefined, birthCooldown: BIRTH_COOLDOWN };
@@ -1185,18 +1180,17 @@ export function tick(state: WorldState): WorldState {
             // Deposit carried resources at home inventory or village stockpile
             if (entity.carrying && entity.carrying.amount > 0) {
               const myHome = entity.homeId ? houses.find(h => h.id === entity.homeId) : undefined;
+              const depositAmount = entity.carrying.amount;
               if (myHome) {
-                // Deposit at house
-                if (entity.carrying.type === 'meat') myHome.inventory.meat += entity.carrying.amount;
-                else if (entity.carrying.type === 'fruit') myHome.inventory.fruit += entity.carrying.amount;
-                else if (entity.carrying.type === 'wood') myHome.inventory.wood += entity.carrying.amount;
+                if (entity.carrying.type === 'meat') myHome.inventory.meat += depositAmount;
+                else if (entity.carrying.type === 'fruit') myHome.inventory.fruit += depositAmount;
+                else if (entity.carrying.type === 'wood') myHome.inventory.wood += depositAmount;
               } else {
-                // No home — deposit at village stockpile
                 const v = getVillage(entity.tribe);
                 if (v) {
-                  if (entity.carrying.type === 'meat') v.meatStore += entity.carrying.amount;
-                  else if (entity.carrying.type === 'fruit') v.plantStore += entity.carrying.amount;
-                  else if (entity.carrying.type === 'wood') v.woodStore += entity.carrying.amount;
+                  if (entity.carrying.type === 'meat') v.meatStore += depositAmount;
+                  else if (entity.carrying.type === 'fruit') v.plantStore += depositAmount;
+                  else if (entity.carrying.type === 'wood') v.woodStore += depositAmount;
                 }
               }
               entity = { ...entity, carrying: undefined };
