@@ -119,10 +119,10 @@ function scoreHunt(ctx: AIContext): number {
   if (ctx.animalPopulation <= scaled(ANIMAL_HUNT_MIN_POPULATION, ctx.gridSize, 2)) return 0;
   const target = foodReserveTarget(ctx);
   const totalFood = totalVillageFood(ctx);
-  if (totalFood >= target) return 0;
-  const foodNeed = (target - totalFood) / target;
+  const foodNeed = Math.max(0, (target - totalFood) / target);
   const panicBoost = ctx.village.meatStore < PANIC_MEAT_THRESHOLD ? 0.25 : 0;
-  return Math.min(1, foodNeed * 0.9 + panicBoost);
+  // Always hunt with at least 0.2 score — men are hunters, it's their job
+  return Math.min(1, Math.max(0.2, foodNeed * 0.9 + panicBoost));
 }
 
 function scoreGather(ctx: AIContext): number {

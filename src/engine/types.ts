@@ -70,7 +70,7 @@ export interface Entity {
   goalSetTick: number;
 }
 
-export const MEAT_PORTIONS_PER_HUNT = 120; // one kill feeds village for a while
+export const MEAT_PORTIONS_PER_HUNT = 30;  // one kill feeds small village briefly
 
 // Traits
 export const TRAIT_ENERGY_COST = 0.15; // extra energy drain per total trait points above baseline
@@ -89,16 +89,16 @@ export const ANIMAL_ENERGY_START = 60;
 export const ANIMAL_ENERGY_GRAZE = 12;     // energy gained from eating grass
 export const ANIMAL_ENERGY_DRAIN = 2;      // energy lost per ANIMAL_DRAIN_INTERVAL ticks
 export const ANIMAL_DRAIN_INTERVAL = 10;   // drain energy every N ticks (~2 per half-day)
-export const ANIMAL_REPRO_MIN_ENERGY = 60; // need decent energy to reproduce
-export const ANIMAL_REPRO_INTERVAL = 800;  // reproduce faster (~4 months)
+export const ANIMAL_REPRO_MIN_ENERGY = 50; // need decent energy to reproduce
+export const ANIMAL_REPRO_INTERVAL = 600;  // reproduce every ~3 months
 export const ANIMAL_MAX = 999;             // no artificial cap — hunger regulates population
-export const ANIMAL_HUNT_MIN_POPULATION = 6; // protect small herds from extinction
+export const ANIMAL_HUNT_MIN_POPULATION = 4; // minimal herd protection
 export const ANIMAL_FLEE_RANGE = 2;      // animals detect humans from 2 tiles away
 export const HUNT_KILL_RANGE = 1;        // must be adjacent to kill
 
 // Grass — grows on plains, food for animals
-export const GRASS_GROW_CHANCE = 0.0003; // chance per plains tile per tick to grow grass
-export const GRASS_MAX_PER_TILE = 1;     // max 1 grass per tile
+export const GRASS_GROW_CHANCE = 0.002;  // chance per plains tile per tick to grow grass
+export const GRASS_MAX_PER_TILE = 2;     // max grass per tile
 
 export interface Tree {
   id: string;
@@ -150,9 +150,9 @@ export const GATHERING_DURATION = 0; // instant on contact
 // Energy
 export const ENERGY_MAX = 100;
 export const ENERGY_START = 80;
-export const ENERGY_DRAIN_INTERVAL = 40; // lose energy very slowly — food is precious
-export const ENERGY_MEAT = 30;           // meat is very nutritious
-export const ENERGY_PLANT = 20;          // fruit is decent
+export const ENERGY_DRAIN_INTERVAL = 15; // standard drain
+export const ENERGY_MEAT = 25;           // meat portion
+export const ENERGY_PLANT = 18;          // fruit portion
 export const ENERGY_MATING_MIN = 30;
 export const HUNGER_THRESHOLD = 40; // eat from pantry when truly hungry
 export const CHILD_AGE = 3; // children don't work/fight/lose energy (years)
