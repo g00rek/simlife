@@ -702,10 +702,20 @@ export function tick(state: WorldState): WorldState {
       const drain = isHungry(a) ? baseDrain * 0.5 : baseDrain;
       a.energy = Math.max(0, a.energy - drain);
     }
-    // Hungry → eat from home inventory first, then village stockpile
+    // Hungry → eat from carrying first, then home, then stockpile
     if (isHungry(a) && !isChild(a)) {
-      const myHome = a.homeId ? houses.find(h => h.id === a.homeId) : undefined;
       let fed = false;
+      // Eat from what you're carrying
+      if (a.carrying && a.carrying.amount > 0) {
+        const energyGain = a.carrying.type === 'meat' ? ENERGY_MEAT : a.carrying.type === 'fruit' ? ENERGY_PLANT : 0;
+        if (energyGain > 0) {
+          a.carrying = { ...a.carrying, amount: a.carrying.amount - 1 };
+          if (a.carrying.amount <= 0) a.carrying = undefined;
+          a.energy = Math.min(ENERGY_MAX, a.energy + energyGain);
+          fed = true;
+        }
+      }
+      const myHome = a.homeId ? houses.find(h => h.id === a.homeId) : undefined;
       // Try home inventory
       if (myHome) {
         if (myHome.inventory.meat > 0) {
