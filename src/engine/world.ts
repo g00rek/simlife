@@ -1156,8 +1156,8 @@ export function tick(state: WorldState): WorldState {
               }
             }
 
-            // Deposit carried resources at home inventory or village stockpile
-            if (entity.carrying && entity.carrying.amount > 0) {
+            // Deposit carried resources ONLY when arriving home (return_home goal)
+            if (goalType === 'return_home' && entity.carrying && entity.carrying.amount > 0) {
               const myHome = entity.homeId ? houses.find(h => h.id === entity.homeId) : undefined;
               const depositAmount = entity.carrying.amount;
               if (myHome) {
