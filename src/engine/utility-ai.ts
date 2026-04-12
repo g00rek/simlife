@@ -144,7 +144,9 @@ function scoreGather(ctx: AIContext): number {
   return Math.min(1, Math.max(foodNeed * 0.6 + panicBoost, stockpileBoost));
 }
 
-function scoreReturnHome(_ctx: AIContext): number {
+function scoreReturnHome(ctx: AIContext): number {
+  // Must return home when carrying resources
+  if (ctx.entity.carrying && ctx.entity.carrying.amount > 0) return 0.9;
   return 0;
 }
 
@@ -465,7 +467,10 @@ export function actionToGoal(action: AIAction, ctx: AIContext): EntityGoal | und
     case 'go_gather': return { type: 'gather', target: action.target };
     case 'go_chop': return { type: 'chop', target: action.target };
     case 'go_build': return { type: 'build', target: action.target };
-    case 'return_home': return ctx.homeTarget ? { type: 'return_home', target: ctx.homeTarget } : undefined;
+    case 'return_home': {
+      const target = ctx.homeTarget ?? ctx.village?.stockpile;
+      return target ? { type: 'return_home', target } : undefined;
+    }
     default: return undefined;
   }
 }

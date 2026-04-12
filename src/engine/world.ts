@@ -860,8 +860,9 @@ export function tick(state: WorldState): WorldState {
     } else if (action === 'chopping') {
       for (const chopper of finishing) {
         resolvedIds.add(chopper.id);
-        const chopV = getVillage(chopper.tribe);
-        if (chopV) chopV.woodStore += WOOD_PER_CHOP;
+        // Carry wood home instead of teleporting
+        const ci = entities.findIndex(e => e.id === chopper.id);
+        if (ci >= 0) entities[ci] = { ...entities[ci], carrying: { type: 'wood', amount: WOOD_PER_CHOP } };
         // Mark tree as chopped (stump)
         const treeIdx = trees.findIndex(t =>
           !t.chopped && t.position.x === chopper.position.x && t.position.y === chopper.position.y
@@ -1126,10 +1127,9 @@ export function tick(state: WorldState): WorldState {
               );
               if (prey >= 0) {
                 animals.splice(prey, 1);
+                // Eat some on the spot, carry the rest home
                 const direct = eatDirectlyToThreshold(entity, ENERGY_MEAT, MEAT_PORTIONS_PER_HUNT);
-                const v = getVillage(entity.tribe);
-                if (v) v.meatStore += direct.remainingPortions;
-                entity = direct.entity;
+                entity = { ...direct.entity, carrying: { type: 'meat', amount: direct.remainingPortions } };
                 entities[idx] = entity;
                 logEvent(entity, 'hunt');
               }
@@ -1145,9 +1145,7 @@ export function tick(state: WorldState): WorldState {
                   hasFruit: trees[treeIdx].fruitPortions > 1,
                 };
                 const direct = eatDirectlyToThreshold(entity, ENERGY_PLANT, TREE_FRUIT_PORTIONS);
-                const v = getVillage(entity.tribe);
-                if (v && villageNeedsFood(v, entities)) v.plantStore += direct.remainingPortions;
-                entity = direct.entity;
+                entity = { ...direct.entity, carrying: { type: 'fruit', amount: direct.remainingPortions } };
                 entities[idx] = entity;
               }
             } else if (goalType === 'chop') {
@@ -1164,6 +1162,18 @@ export function tick(state: WorldState): WorldState {
                 entity = { ...entity, state: 'building' as const, stateTimer: BUILDING_DURATION, goal: undefined };
                 entities[idx] = entity;
               }
+            }
+
+            // Deposit carried resources at home
+            if (entity.carrying && entity.carrying.amount > 0) {
+              const v = getVillage(entity.tribe);
+              if (v) {
+                if (entity.carrying.type === 'meat') v.meatStore += entity.carrying.amount;
+                else if (entity.carrying.type === 'fruit') v.plantStore += entity.carrying.amount;
+                else if (entity.carrying.type === 'wood') v.woodStore += entity.carrying.amount;
+              }
+              entity = { ...entity, carrying: undefined };
+              entities[idx] = entity;
             }
             break;
           }

@@ -68,6 +68,7 @@ export interface Entity {
   coldExposure?: boolean; // set when winter cold penalty was applied this tick
   goal?: EntityGoal;
   goalSetTick: number;
+  carrying?: { type: 'meat' | 'wood' | 'fruit'; amount: number };
 }
 
 export const MEAT_PORTIONS_PER_HUNT = 30;  // one kill feeds small village briefly
