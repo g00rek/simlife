@@ -159,8 +159,8 @@ export const CHILD_AGE = 3; // children don't work/fight/lose energy (years)
 export const INFANT_MORTALITY = 0.3; // 30% chance child dies at birth (historical rate)
 export const MATERNAL_MORTALITY = 0.05; // 5% chance mother dies per birth
 
-export const FOOD_RESERVE_PER_PERSON = 3; // portions per person for "gather urgently" threshold
-export const FOOD_RESERVE_MIN = 10;       // minimum even for tiny populations
+export const FOOD_RESERVE_PER_PERSON = 10; // portions per person — hunt/gather until well stocked
+export const FOOD_RESERVE_MIN = 30;        // minimum even for tiny populations
 export const PLANT_RESERVE_MIN = 20;
 
 // Resources — base values tuned for 30×30 (900 tiles)
