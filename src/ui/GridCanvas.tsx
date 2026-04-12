@@ -437,6 +437,11 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     }
 
     // --- Draw animals (interpolated) ---
+    // Assign herd numbers (1, 2, 3...) from unique alphas
+    const herdIds = [...new Set(world.animals.map(a => a.herdAlpha))];
+    const herdNumMap = new Map<string, number>();
+    herdIds.forEach((id, i) => herdNumMap.set(id, i + 1));
+
     for (const animal of world.animals) {
       const prev = prevAnimalPos.current.get(animal.id) ?? animal.position;
       const pos = lerpPos(prev, animal.position, t);
@@ -448,6 +453,18 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
         ? Math.floor(frameCount / 15) % 2   // running: faster animation (~0.25s)
         : Math.floor(frameCount / 60) % 2;  // idle: slow animation (~1s)
       drawAnimalSprite(ctx, sprites, cx, cy, cellSize, animal.gender, animalFrame, moving, facingLeft);
+
+      // Herd number above animal
+      const herdNum = herdNumMap.get(animal.herdAlpha) ?? 0;
+      const fontSize = Math.max(8, Math.round(cellSize * 0.45));
+      ctx.font = `bold ${fontSize}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = Math.max(1, fontSize * 0.2);
+      ctx.strokeText(String(herdNum), cx, cy - cellSize * 0.3);
+      ctx.fillText(String(herdNum), cx, cy - cellSize * 0.3);
     }
 
     // --- Group entities by tile ---
