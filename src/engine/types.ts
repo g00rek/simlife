@@ -128,11 +128,18 @@ export const NIGHT_TICKS = 10;   // last 10 ticks = nighttime
 
 export const MATE_COOLDOWN = 200;      // ticks after impregnation before male can mate again
 
+export interface Inventory {
+  meat: number;
+  wood: number;
+  fruit: number;
+}
+
 export interface House {
   id: string;
-  position: Position;  // top-left corner of 3×3 area
+  position: Position;  // top-left corner of 2×2 area
   tribe: TribeId;
   occupants: string[]; // entity IDs living here (max HOUSE_CAPACITY)
+  inventory: Inventory;
 }
 
 export const HOUSE_CAPACITY = 6;         // max people per house

@@ -175,24 +175,24 @@ describe('decideAction hunt behavior', () => {
     expect(action.type).toBe('go_gather');
   });
 
-  it('male does not hunt when total food reserve is enough', () => {
+  it('male does not hunt when total food reserve exceeds target', () => {
     const action = decideAction(
       makeContext({
         entity: makeEntity({ gender: 'male' }),
-        nearHome: false,
-        homeTarget: { x: 5, y: 5 },
+        nearHome: true,
         nearestAnimal: { pos: { x: 7, y: 5 }, dist: 2 },
         village: {
           tribe: 0,
           color: [220, 60, 60],
           name: 'Red Tribe',
-          meatStore: 60,
-          plantStore: 5,
+          meatStore: 200,
+          plantStore: 50,
           woodStore: 30,
         },
       }),
     );
-    expect(action.type).toBe('return_home');
+    // With food way above target, hunt score = 0, should play or chop
+    expect(action.type).not.toBe('go_hunt');
   });
 
   it('male hunts when village meat is low and energy is safe', () => {

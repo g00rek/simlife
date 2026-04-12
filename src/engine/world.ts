@@ -688,7 +688,7 @@ export function tick(state: WorldState): WorldState {
     log.push({ tick: tickNum, type, entityId: e.id, name: e.name, gender: e.gender, age: e.age, ...extra });
   }
   let animals = state.animals.map(a => ({ ...a, position: { ...a.position } }));
-  let houses = state.houses.map(h => ({ ...h, position: { ...h.position }, occupants: [...h.occupants] }));
+  let houses = state.houses.map(h => ({ ...h, position: { ...h.position }, occupants: [...h.occupants], inventory: { ...h.inventory } }));
   const stockpileTiles = new Set(
     updatedVillages
       .filter(v => v.stockpile)
@@ -706,19 +706,28 @@ export function tick(state: WorldState): WorldState {
       const drain = isHungry(a) ? baseDrain * 0.5 : baseDrain;
       a.energy = Math.max(0, a.energy - drain);
     }
-    // Hungry → eat from village pantry or personal meat (ronin)
+    // Hungry → eat from home inventory first, then village stockpile
     if (isHungry(a) && !isChild(a)) {
-      const myV = getVillage(a.tribe);
-      if (myV && myV.meatStore > 0) {
-        myV.meatStore -= 1;
-        a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT);
-      } else if (myV && myV.plantStore > 0) {
-        myV.plantStore -= 1;
-        a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_PLANT);
-      } else if (a.meat > 0) {
-        // Ronin or empty pantry — personal meat
-        a.meat -= 1;
-        a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT);
+      const myHome = a.homeId ? houses.find(h => h.id === a.homeId) : undefined;
+      let fed = false;
+      // Try home inventory
+      if (myHome) {
+        if (myHome.inventory.meat > 0) {
+          myHome.inventory.meat -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT); fed = true;
+        } else if (myHome.inventory.fruit > 0) {
+          myHome.inventory.fruit -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_PLANT); fed = true;
+        }
+      }
+      // Fallback: village stockpile
+      if (!fed) {
+        const myV = getVillage(a.tribe);
+        if (myV && myV.meatStore > 0) {
+          myV.meatStore -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT);
+        } else if (myV && myV.plantStore > 0) {
+          myV.plantStore -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_PLANT);
+        } else if (a.meat > 0) {
+          a.meat -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT);
+        }
       }
     }
     return a;
@@ -882,6 +891,7 @@ export function tick(state: WorldState): WorldState {
           position: { ...builder.position },
           tribe: builder.tribe,
           occupants: [],
+          inventory: { meat: 0, wood: 0, fruit: 0 },
         };
         houses.push(newHouse);
         logEvent(builder, 'build_done', { detail: 'built a house' });
@@ -1164,13 +1174,22 @@ export function tick(state: WorldState): WorldState {
               }
             }
 
-            // Deposit carried resources at home
+            // Deposit carried resources at home inventory or village stockpile
             if (entity.carrying && entity.carrying.amount > 0) {
-              const v = getVillage(entity.tribe);
-              if (v) {
-                if (entity.carrying.type === 'meat') v.meatStore += entity.carrying.amount;
-                else if (entity.carrying.type === 'fruit') v.plantStore += entity.carrying.amount;
-                else if (entity.carrying.type === 'wood') v.woodStore += entity.carrying.amount;
+              const myHome = entity.homeId ? houses.find(h => h.id === entity.homeId) : undefined;
+              if (myHome) {
+                // Deposit at house
+                if (entity.carrying.type === 'meat') myHome.inventory.meat += entity.carrying.amount;
+                else if (entity.carrying.type === 'fruit') myHome.inventory.fruit += entity.carrying.amount;
+                else if (entity.carrying.type === 'wood') myHome.inventory.wood += entity.carrying.amount;
+              } else {
+                // No home — deposit at village stockpile
+                const v = getVillage(entity.tribe);
+                if (v) {
+                  if (entity.carrying.type === 'meat') v.meatStore += entity.carrying.amount;
+                  else if (entity.carrying.type === 'fruit') v.plantStore += entity.carrying.amount;
+                  else if (entity.carrying.type === 'wood') v.woodStore += entity.carrying.amount;
+                }
               }
               entity = { ...entity, carrying: undefined };
               entities[idx] = entity;
