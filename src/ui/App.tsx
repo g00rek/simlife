@@ -191,7 +191,7 @@ export function App() {
   const handleCanvasClick = useCallback((x: number, y: number) => {
     setSelectedTile({ x, y });
     const cellSize = mapSize / world.gridSize;
-    setOverlayPos({ x: Math.round((x + 1) * cellSize), y: Math.round(y * cellSize) });
+    setOverlayPos({ x: Math.round((x + 2) * cellSize), y: Math.round(y * cellSize) });
     const entity = world.entities.find(
       e => {
         const home = e.homeId ? world.houses.find(house => house.id === e.homeId) : undefined;
@@ -302,8 +302,9 @@ export function App() {
                   fontSize: 11,
                   pointerEvents: 'auto',
                 }}>
-                  <div onMouseDown={handleDragStart} style={{ padding: '6px 8px', cursor: 'grab', borderBottom: '1px solid #2d3346', color: '#888', fontSize: 10, userSelect: 'none' }}>
-                    ⠿ {selectedEntity ? selectedEntity.name : `Tile ${selectedTile?.x},${selectedTile?.y}`}
+                  <div onMouseDown={handleDragStart} style={{ padding: '6px 8px', cursor: 'grab', borderBottom: '1px solid #2d3346', color: '#888', fontSize: 10, userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>⠿ {selectedEntity ? selectedEntity.name : `Tile ${selectedTile?.x},${selectedTile?.y}`}</span>
+                    <span onClick={(e) => { e.stopPropagation(); setSelectedId(null); setSelectedTile(null); setOverlayPos(null); }} style={{ cursor: 'pointer', color: '#666', fontSize: 13, padding: '0 2px' }}>✕</span>
                   </div>
                   <div style={{ padding: 8 }}>
                     {entityPanel}

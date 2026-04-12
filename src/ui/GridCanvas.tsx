@@ -98,14 +98,16 @@ function drawPersonSprite(
   ctx.fill();
 
   ctx.imageSmoothingEnabled = false;
+  // Inset source rect by 0.1px to prevent bleeding from adjacent sprites
+  const si = 0.1;
   if (facingLeft) {
     ctx.save();
     ctx.translate(cx, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(sprites.units, sx, sy, 8, 8, Math.round(-dstSize / 2), dy, dstSize, dstSize);
+    ctx.drawImage(sprites.units, sx + si, sy + si, 8 - si * 2, 8 - si * 2, Math.round(-dstSize / 2), dy, dstSize, dstSize);
     ctx.restore();
   } else {
-    ctx.drawImage(sprites.units, sx, sy, 8, 8, dx, dy, dstSize, dstSize);
+    ctx.drawImage(sprites.units, sx + si, sy + si, 8 - si * 2, 8 - si * 2, dx, dy, dstSize, dstSize);
   }
 }
 
@@ -226,15 +228,16 @@ function drawAnimalSprite(
   const dx = Math.round(cx - dstW / 2);
   const dy = Math.round(cy - dstH / 2);
   ctx.imageSmoothingEnabled = false;
+  const si = 0.1;
   if (facingLeft) {
     ctx.save();
     ctx.translate(cx, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(sprites.animals, frame.sx, frame.sy, 8, 8,
+    ctx.drawImage(sprites.animals, frame.sx + si, frame.sy + si, 8 - si * 2, 8 - si * 2,
       Math.round(-dstW / 2), dy, Math.round(dstW), Math.round(dstH));
     ctx.restore();
   } else {
-    ctx.drawImage(sprites.animals, frame.sx, frame.sy, 8, 8, dx, dy, Math.round(dstW), Math.round(dstH));
+    ctx.drawImage(sprites.animals, frame.sx + si, frame.sy + si, 8 - si * 2, 8 - si * 2, dx, dy, Math.round(dstW), Math.round(dstH));
   }
 }
 

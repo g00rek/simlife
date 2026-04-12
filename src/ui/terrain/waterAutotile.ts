@@ -133,7 +133,10 @@ function drawTile(
   cellSize: number,
 ) {
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(sheet, tile.sx, tile.sy, tile.sw, tile.sh, x, y, Math.round(cellSize), Math.round(cellSize));
+  const si = 0.1;
+  const cs = Math.ceil(cellSize + 0.5); // slightly oversize to prevent gaps
+  ctx.drawImage(sheet, tile.sx + si, tile.sy + si, tile.sw - si * 2, tile.sh - si * 2,
+    Math.floor(x), Math.floor(y), cs, cs);
 }
 
 // ── Main draw function ───────────────────────────────────────────────
