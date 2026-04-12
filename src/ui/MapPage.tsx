@@ -70,7 +70,9 @@ export function MapPage() {
     return () => ro.disconnect();
   }, []);
 
-  const cellSize = Math.max(2, Math.floor(containerWidth / biomes.length));
+  // Fit map to available space — min of container width and viewport height minus controls (~200px)
+  const availableSize = Math.min(containerWidth, window.innerHeight - 220);
+  const cellSize = Math.max(2, Math.floor(availableSize / biomes.length));
   const canvasPx = cellSize * biomes.length;
 
   useEffect(() => {
@@ -135,15 +137,7 @@ export function MapPage() {
 
   return (
     <main style={pageStyle}>
-      {/* Full-width map */}
-      <div ref={containerRef} style={mapContainerStyle}>
-        <canvas
-          ref={canvasRef}
-          style={{ ...canvasStyle, width: canvasPx, height: canvasPx }}
-        />
-      </div>
-
-      {/* Controls below map */}
+      {/* Controls on top */}
       <section style={controlsStyle}>
         <div style={controlsInnerStyle}>
           <div style={controlsHeaderStyle}>
@@ -173,6 +167,14 @@ export function MapPage() {
           </div>
         </div>
       </section>
+
+      {/* Map below controls — fit to remaining viewport height */}
+      <div ref={containerRef} style={mapContainerStyle}>
+        <canvas
+          ref={canvasRef}
+          style={{ ...canvasStyle, width: canvasPx, height: canvasPx }}
+        />
+      </div>
     </main>
   );
 }
