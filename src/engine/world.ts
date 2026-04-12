@@ -1050,7 +1050,7 @@ export function tick(state: WorldState): WorldState {
       }
     }
 
-    // Hunt re-targeting: update target to nearest animal's current position
+    // Hunt re-targeting: update target to nearest visible animal, keep walking if none visible
     if (entity.goal?.type === 'hunt') {
       const sense = Math.floor(3 + entity.traits.perception * 2);
       let closest: Animal | undefined;
@@ -1060,12 +1060,11 @@ export function tick(state: WorldState): WorldState {
         if (d > 0 && d <= sense && d < closestDist) { closestDist = d; closest = a; }
       }
       if (closest) {
+        // See an animal — chase it directly
         entity = { ...entity, goal: { ...entity.goal, target: closest.position } };
         entities[idx] = entity;
-      } else {
-        entity = { ...entity, goal: undefined };
-        entities[idx] = entity;
       }
+      // If no animal visible, keep walking toward current target (herd center)
     }
 
     // Pursue goal — move toward target
