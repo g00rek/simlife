@@ -82,7 +82,10 @@ export interface Animal {
   energy: number;      // 0-100, dies at 0
   reproTimer: number;  // ticks until next reproduction attempt
   panicTicks: number;  // ticks remaining of flee behavior after seeing human
+  herdAlpha: string;   // id of the alpha male this animal follows
 }
+
+export const MAX_HERD_SIZE = 12;  // herd splits when above this
 
 export const ANIMAL_ENERGY_MAX = 100;
 export const ANIMAL_ENERGY_START = 60;

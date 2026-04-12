@@ -11,6 +11,7 @@ import {
   CHOPPING_DURATION, BUILDING_DURATION, HUNT_KILL_RANGE, HOUSE_WOOD_COST, HOUSE_CAPACITY, HOUSE_SIZE,
   ANIMAL_ENERGY_MAX, ANIMAL_ENERGY_START, ANIMAL_ENERGY_GRAZE, ANIMAL_ENERGY_DRAIN,
   ANIMAL_DRAIN_INTERVAL, ANIMAL_REPRO_MIN_ENERGY, GRASS_GROW_CHANCE, GRASS_MAX_PER_TILE,
+  MAX_HERD_SIZE,
 } from './types';
 import { generateBiomeGrid, isPassable } from './biomes';
 import type { BiomeGenParams } from './biomes';
@@ -455,16 +456,26 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     )
   );
 
+  // Create animals in 2+ initial herds
   const animalCount = scaled(ANIMAL_COUNT, gridSize, 4);
+  const herdsCount = Math.max(2, Math.floor(animalCount / 6));
+  const alphaIds: string[] = [];
+  for (let h = 0; h < herdsCount; h++) {
+    alphaIds.push(generateId('a'));
+  }
   const animals: Animal[] = [];
   for (let i = 0; i < animalCount; i++) {
+    const herdIdx = i % herdsCount;
+    const isAlpha = i < herdsCount;
+    const id = isAlpha ? alphaIds[herdIdx] : generateId('a');
     animals.push({
-      id: generateId('a'),
+      id,
       position: randomPassablePos(biomes, gridSize),
       gender: i < animalCount / 2 ? 'male' : 'female',
       energy: ANIMAL_ENERGY_START,
       reproTimer: Math.floor(Math.random() * ANIMAL_REPRO_INTERVAL),
       panicTicks: 0,
+      herdAlpha: alphaIds[herdIdx],
     });
   }
 
@@ -1199,10 +1210,10 @@ export function tick(state: WorldState): WorldState {
           }
         }
       }
-      // Compute herd center of mass (all other animals)
+      // Compute herd center for THIS animal's herd only
       let herdCx = 0, herdCy = 0, herdCount = 0;
       for (const other of animals) {
-        if (other.id === a.id) continue;
+        if (other.herdAlpha !== a.herdAlpha || other.id === a.id) continue;
         herdCx += other.position.x;
         herdCy += other.position.y;
         herdCount++;
@@ -1289,6 +1300,7 @@ export function tick(state: WorldState): WorldState {
         energy: ANIMAL_ENERGY_START,
         reproTimer: ANIMAL_REPRO_INTERVAL,
         panicTicks: 0,
+        herdAlpha: female.herdAlpha,
       });
     }
     animals.push(...babyAnimals);
@@ -1301,6 +1313,45 @@ export function tick(state: WorldState): WorldState {
     }
     return a;
   }).filter(a => a.energy > 0); // dead animals removed
+
+  // Reassign alpha if old alpha died
+  const aliveIds = new Set(animals.map(a => a.id));
+  for (const a of animals) {
+    if (!aliveIds.has(a.herdAlpha)) {
+      // Alpha is dead — find new alpha (any male in same herd, or self)
+      const sameHerd = animals.filter(o => o.herdAlpha === a.herdAlpha);
+      const newAlpha = sameHerd.find(o => o.gender === 'male') ?? a;
+      for (const o of sameHerd) o.herdAlpha = newAlpha.id;
+    }
+  }
+
+  // --- Step 5d: Herd splitting when too large ---
+  {
+    const herdGroups = new Map<string, Animal[]>();
+    for (const a of animals) {
+      const group = herdGroups.get(a.herdAlpha) ?? [];
+      group.push(a);
+      herdGroups.set(a.herdAlpha, group);
+    }
+
+    for (const [alphaId, herd] of herdGroups) {
+      if (herd.length <= MAX_HERD_SIZE) continue;
+      // Find a young male to become new alpha
+      const newAlpha = herd.find(a => a.gender === 'male' && a.id !== alphaId);
+      if (!newAlpha) continue;
+      // Split: half the herd follows new alpha
+      let moved = 0;
+      const target = Math.floor(herd.length / 2);
+      for (const a of herd) {
+        if (a.id === alphaId) continue; // old alpha stays
+        if (moved >= target) break;
+        if (a.id === newAlpha.id || Math.random() < 0.5) {
+          a.herdAlpha = newAlpha.id;
+          moved++;
+        }
+      }
+    }
+  }
 
   // --- Step 6: Gradual seasonal fruit tree cycle ---
   // Each tick, individual trees have a small chance to transition.

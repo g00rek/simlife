@@ -116,13 +116,20 @@ function scoreChopFirewood(ctx: AIContext): number {
 function scoreHunt(ctx: AIContext): number {
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (!ctx.village) return 0;
-  if (ctx.animalPopulation <= scaled(ANIMAL_HUNT_MIN_POPULATION, ctx.gridSize, 2)) return 0;
+  if (ctx.animalPopulation === 0) return 0;
+
   const target = foodReserveTarget(ctx);
   const totalFood = totalVillageFood(ctx);
   const foodNeed = Math.max(0, (target - totalFood) / target);
   const panicBoost = ctx.village.meatStore < PANIC_MEAT_THRESHOLD ? 0.25 : 0;
-  // Always hunt with at least 0.2 score — men are hunters, it's their job
-  return Math.min(1, Math.max(0.2, foodNeed * 0.9 + panicBoost));
+
+  // Sustainable hunting: pressure scales with animal-to-human ratio
+  // Many animals per human → hunt freely. Few animals → hunt rarely.
+  const ratio = ctx.animalPopulation / Math.max(1, ctx.tribePopulation);
+  const sustainability = Math.min(1, ratio / 3); // full score when 3+ animals per human
+
+  const baseScore = Math.max(0.15, foodNeed * 0.9 + panicBoost);
+  return Math.min(1, baseScore * Math.max(0.1, sustainability));
 }
 
 function scoreGather(ctx: AIContext): number {
@@ -297,12 +304,24 @@ export function buildAIContext(
     }
   }
 
-  // Animal herd center of mass (for long-range hunting trips)
+  // Find nearest herd center for hunting
   let animalHerdCenter: Position | undefined;
   if (animals.length > 0) {
-    let cx = 0, cy = 0;
-    for (const a of animals) { cx += a.position.x; cy += a.position.y; }
-    animalHerdCenter = { x: Math.round(cx / animals.length), y: Math.round(cy / animals.length) };
+    // Group by herdAlpha
+    const herds = new Map<string, Position[]>();
+    for (const a of animals) {
+      const group = herds.get(a.herdAlpha) ?? [];
+      group.push(a.position);
+      herds.set(a.herdAlpha, group);
+    }
+    // Find nearest herd center
+    let bestDist = Infinity;
+    for (const [, positions] of herds) {
+      const cx = Math.round(positions.reduce((s, p) => s + p.x, 0) / positions.length);
+      const cy = Math.round(positions.reduce((s, p) => s + p.y, 0) / positions.length);
+      const d = Math.abs(cx - entity.position.x) + Math.abs(cy - entity.position.y);
+      if (d < bestDist) { bestDist = d; animalHerdCenter = { x: cx, y: cy }; }
+    }
   }
 
   // Find nearest fruit tree with available fruit
