@@ -85,7 +85,7 @@ export interface Animal {
   herdAlpha: string;   // id of the alpha male this animal follows
 }
 
-export const MAX_HERD_SIZE = 20;  // herd splits when above this
+export const MAX_HERD_SIZE = 30;  // herd splits when above this
 
 export const ANIMAL_ENERGY_MAX = 100;
 export const ANIMAL_ENERGY_START = 60;

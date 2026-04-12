@@ -1360,10 +1360,13 @@ export function tick(state: WorldState): WorldState {
       if (!mate) continue;
       matedIds.add(female.id);
       matedIds.add(mate.id);
-      // Adaptive reproduction: small herds breed fast, large herds slow
-      const myHerdSize = herdSizes.get(female.herdAlpha) ?? 1;
-      const reproSpeed = Math.max(0.2, Math.min(1, myHerdSize / MAX_HERD_SIZE));
-      const cooldown = Math.round(ANIMAL_REPRO_INTERVAL * reproSpeed);
+      // Adaptive reproduction: scales with TOTAL population vs carrying capacity
+      const carryingCapacity = scaled(15, gridSize, 4); // ~15 animals on 30x30
+      const popRatio = animals.length / carryingCapacity;
+      // Below capacity: fast breeding. Above: exponentially slower.
+      const cooldown = popRatio <= 1
+        ? Math.round(ANIMAL_REPRO_INTERVAL * Math.max(0.15, popRatio))
+        : Math.round(ANIMAL_REPRO_INTERVAL * popRatio * popRatio); // exponential slowdown
       female.reproTimer = cooldown;
       mate.reproTimer = cooldown;
       const ns = neighbors(female.position, gridSize).filter(n => isPassable(biomes[n.y][n.x]));
