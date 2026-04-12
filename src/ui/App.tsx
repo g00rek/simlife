@@ -77,7 +77,7 @@ export function App() {
   const [selectedTile, setSelectedTile] = useState<Position | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
 
-  const { w: winW, h: winH } = useWindowSize();
+  const { w: winW } = useWindowSize();
   const isDesktop = winW >= 1024;
   const PAD = isDesktop ? 16 : 12;
   const mapSize = isDesktop
