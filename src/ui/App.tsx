@@ -81,7 +81,7 @@ export function App() {
   const isDesktop = winW >= 1024;
   const PAD = isDesktop ? 16 : 12;
   const mapSize = isDesktop
-    ? Math.min(winW - SIDEBAR_W - PAD * 2 - 16, winH - 120, 900)
+    ? winW - SIDEBAR_W - PAD * 2 - 16
     : Math.min(winW - PAD * 2, 600);
   const graphW = isDesktop ? SIDEBAR_W - 26 : mapSize - 20;
 
