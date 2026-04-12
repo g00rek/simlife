@@ -1197,6 +1197,10 @@ export function tick(state: WorldState): WorldState {
   // Also block entity tiles
   for (const e of entities) animalOccupied.add(`${e.position.x},${e.position.y}`);
 
+  // Precompute herd sizes for alertness and reproduction
+  const herdSizes = new Map<string, number>();
+  for (const a of animals) herdSizes.set(a.herdAlpha, (herdSizes.get(a.herdAlpha) ?? 0) + 1);
+
   // Precompute settlement positions animals should avoid
   const settlementPositions: Position[] = [];
   for (const v of updatedVillages) { if (v.stockpile) settlementPositions.push(v.stockpile); }
@@ -1206,19 +1210,26 @@ export function tick(state: WorldState): WorldState {
   for (let ai = 0; ai < animals.length; ai++) {
     const a = animals[ai];
     let newPos: Position;
-    let nearestHumanDist = ANIMAL_FLEE_RANGE + 1;
+
+    // Small herds are more alert: wider flee range, longer panic
+    const myHerdSize = herdSizes.get(a.herdAlpha) ?? 1;
+    const alertness = Math.max(1, Math.round(4 / Math.max(1, myHerdSize / 5))); // 4 at size 5, 2 at size 10, 1 at size 20+
+    const dynamicFleeRange = ANIMAL_FLEE_RANGE + alertness;
+    const dynamicPanicDuration = 4 + alertness * 2; // 6-12 ticks
+
+    let nearestHumanDist = dynamicFleeRange + 1;
     let nearestHumanPos: Position | null = null;
     for (const e of entities) {
       const d = manhattan(a.position, e.position);
-      if (d > 0 && d <= ANIMAL_FLEE_RANGE && d < nearestHumanDist) {
+      if (d > 0 && d <= dynamicFleeRange && d < nearestHumanDist) {
         nearestHumanDist = d;
         nearestHumanPos = e.position;
       }
     }
-    // Panic: set 6 tick panic when human spotted, keep fleeing while panicked
+    // Panic: set dynamic panic when human spotted
     let panicTicks = a.panicTicks;
     if (nearestHumanPos) {
-      panicTicks = 6; // refresh panic
+      panicTicks = dynamicPanicDuration;
     }
 
     if (panicTicks > 0 && tickNum % 2 === 0) {
@@ -1343,9 +1354,6 @@ export function tick(state: WorldState): WorldState {
   }
 
   // --- Step 5b: Reproduce animals (adjacent tiles, M+F, requires energy) ---
-  // Count herd sizes for adaptive reproduction
-  const herdSizes = new Map<string, number>();
-  for (const a of animals) herdSizes.set(a.herdAlpha, (herdSizes.get(a.herdAlpha) ?? 0) + 1);
 
   if (animals.length < animalMax) {
     const matedIds = new Set<string>();
@@ -1434,8 +1442,9 @@ export function tick(state: WorldState): WorldState {
   // --- Step 5e: Animal migration — new animals arrive when population is low ---
   {
     const targetPop = scaled(ANIMAL_COUNT, gridSize, 4);
-    if (animals.length < targetPop / 2 && tickNum % 200 === 0) {
-      // Spawn a small group at map edge every ~10 days when population is critically low
+    // Migration frequency scales with how depleted the population is
+    const migrationInterval = animals.length === 0 ? 50 : animals.length < 4 ? 100 : 200;
+    if (animals.length < targetPop / 2 && tickNum % migrationInterval === 0) {
       const edge = Math.random() < 0.5 ? 0 : gridSize - 1;
       const along = Math.floor(Math.random() * gridSize);
       const isHorizontal = Math.random() < 0.5;
