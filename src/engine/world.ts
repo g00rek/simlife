@@ -1053,20 +1053,12 @@ export function tick(state: WorldState): WorldState {
         entities[idx] = entity;
       } else {
         // Non-goal action (rest, play, wander) — execute once
-        if (action.type === 'play') {
-          const playTarget = randomStepBiome(entity.position, gridSize, biomes, houseTiles);
-          if (isNearTribeHouses(playTarget, entity.tribe, houses) && moveGrid[playTarget.y][playTarget.x] < 1) {
+        if (action.type === 'play' || action.type === 'wander') {
+          const target = randomStepBiome(entity.position, gridSize, biomes, houseTiles);
+          if (moveGrid[target.y][target.x] < 1) {
             moveGrid[entity.position.y][entity.position.x]--;
-            moveGrid[playTarget.y][playTarget.x]++;
-            entity = { ...entity, position: playTarget };
-            entities[idx] = entity;
-          }
-        } else if (action.type === 'wander') {
-          const wTarget = randomStepBiome(entity.position, gridSize, biomes, houseTiles);
-          if (moveGrid[wTarget.y][wTarget.x] < 1) {
-            moveGrid[entity.position.y][entity.position.x]--;
-            moveGrid[wTarget.y][wTarget.x]++;
-            entity = { ...entity, position: wTarget };
+            moveGrid[target.y][target.x]++;
+            entity = { ...entity, position: target };
             entities[idx] = entity;
           }
         }
@@ -1107,8 +1099,7 @@ export function tick(state: WorldState): WorldState {
           break;
         }
 
-        // Allow passing through occupied tiles if goal is further away
-        // Allow passing through AND arriving at occupied tiles (actions are instant)
+        // Allow up to 2 entities on a tile (passing through or arriving for instant action)
         const canPass = moveGrid[moveTarget.y][moveTarget.x] < 2;
         if (canPass) {
           moveGrid[entity.position.y][entity.position.x]--;
