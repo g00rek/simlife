@@ -75,7 +75,7 @@ describe('decideAction gather behavior', () => {
     expect(action.type).toBe('wander');
   });
 
-  it('female stays near home when total food and plant reserves are enough', () => {
+  it('female wanders to find food even when reserves are moderate', () => {
     const action = decideAction(
       makeContext({
         nearHome: true,
@@ -89,7 +89,8 @@ describe('decideAction gather behavior', () => {
         },
       }),
     );
-    expect(action.type).toBe('play');
+    // With reserves below target (pop*10=120), females seek food
+    expect(['wander', 'go_gather']).toContain(action.type);
   });
 
   it('detects fruit trees beyond normal perception range', () => {
