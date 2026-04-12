@@ -81,7 +81,7 @@ export function App() {
   const isDesktop = winW >= 1024;
   const PAD = isDesktop ? 16 : 12;
   const mapSize = isDesktop
-    ? winW - SIDEBAR_W - PAD * 2 - 16
+    ? winW - SIDEBAR_W - PAD * 2 - 32 // padding + gap + scrollbar
     : Math.min(winW - PAD * 2, 600);
   const graphW = isDesktop ? SIDEBAR_W - 26 : mapSize - 20;
 
@@ -324,8 +324,7 @@ const desktopContainerStyle: React.CSSProperties = {
   minHeight: '100vh',
   padding: '16px',
   fontFamily: 'system-ui, -apple-system, sans-serif',
-  maxWidth: '1400px',
-  margin: '0 auto',
+  margin: '0',
   display: 'flex',
   flexDirection: 'column',
   gap: '8px',
@@ -353,6 +352,7 @@ const bodyStyle: React.CSSProperties = {
 const mainColStyle: React.CSSProperties = {
   flex: 1,
   minWidth: 0,
+  overflow: 'hidden',
   display: 'flex',
   flexDirection: 'column',
   gap: '8px',
