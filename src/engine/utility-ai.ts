@@ -144,9 +144,8 @@ function scoreGather(ctx: AIContext): number {
   return Math.min(1, Math.max(foodNeed * 0.6 + panicBoost, stockpileBoost));
 }
 
-function scoreReturnHome(ctx: AIContext): number {
-  if (!ctx.homeTarget || ctx.nearHome) return 0;
-  return 0.4;
+function scoreReturnHome(_ctx: AIContext): number {
+  return 0;
 }
 
 // --- Main decision function ---
