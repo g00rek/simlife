@@ -613,7 +613,7 @@ function pheromoneMating(entities: Entity[], villages: Village[], _houses: House
   const updated = [...entities];
   const matedMaleIds = new Set<string>();
 
-  // Find all fertile males ready to mate
+  // Males near stockpile/houses can mate with nearby fertile females
   const males = updated.filter(e =>
     e.gender === 'male' && !isChild(e) && isReproductive(e)
     && e.mateCooldown === 0 && e.state !== 'fighting'
@@ -621,9 +621,15 @@ function pheromoneMating(entities: Entity[], villages: Village[], _houses: House
 
   for (const male of males) {
     if (matedMaleIds.has(male.id)) continue;
-    const range = 4; // mating range — must be nearby
 
-    // Find fertile females in range
+    // Male must be near a house or stockpile (just returned from work)
+    const nearSettlement = _houses.some((h: House) =>
+      manhattan(male.position, { x: h.position.x + 1, y: h.position.y + 1 }) <= 4
+    ) || villages.some(v => v.stockpile && manhattan(male.position, v.stockpile) <= 3);
+    if (!nearSettlement) continue;
+
+    const range = 6; // check females within 6 tiles
+
     for (let fi = 0; fi < updated.length; fi++) {
       const female = updated[fi];
       if (female.gender !== 'female' || isChild(female)) continue;
@@ -631,9 +637,9 @@ function pheromoneMating(entities: Entity[], villages: Village[], _houses: House
       if (female.state === 'pregnant') continue;
       if (female.birthCooldown > 0) continue;
       if (female.tribe !== male.tribe) continue;
-      if (!female.homeId) continue; // only females with a home can get pregnant
+      if (!female.homeId) continue;
 
-      // Food-based fertility: total food (stockpile + houses) >= 2 per person
+      // Food check
       const village = villages.find(v => v.tribe === female.tribe);
       if (village) {
         const tribePop = entities.filter(e => e.tribe === female.tribe).length;
@@ -646,7 +652,7 @@ function pheromoneMating(entities: Entity[], villages: Village[], _houses: House
       const dist = manhattan(male.position, female.position);
       if (dist > range) continue;
 
-      // Mating chance based on male strength (strength 1 = 5%, strength 10 = 50%)
+      // Mating chance based on male strength
       const matingChance = male.traits.strength / 20;
       if (Math.random() >= matingChance) continue;
 
