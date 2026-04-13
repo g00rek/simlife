@@ -159,6 +159,24 @@ function resolveChopArrival(entity: Entity, trees: Tree[], biomes: Biome[][]): E
   return { ...entity, activity: startWork('chopping') };
 }
 
+// Mining: miner arrives at an adjacent passable tile (mountain is impassable),
+// finds a deposit with remaining > 0 on the target mountain tile, starts work.
+function resolveMineArrival(
+  entity: Entity,
+  goldDeposits: GoldDeposit[],
+  biomes: Biome[][],
+): Entity {
+  if (entity.activity.kind !== 'moving') return entity;
+  const target = entity.activity.target;
+  if (manhattan(entity.position, target) > 1) return { ...entity, activity: IDLE };
+  if (biomes[target.y]?.[target.x] !== 'mountain') return { ...entity, activity: IDLE };
+  const deposit = goldDeposits.find(d =>
+    d.position.x === target.x && d.position.y === target.y && d.remaining > 0
+  );
+  if (!deposit) return { ...entity, activity: IDLE };
+  return { ...entity, activity: startWork('mining') };
+}
+
 function resolveBuildArrival(
   entity: Entity, biomes: Biome[][], gridSize: number,
   houses: House[], villages: Village[], getVillage: GetVillageFn,
@@ -226,6 +244,34 @@ function completeChopping(entity: Entity, trees: Tree[], tickNum: number, logEve
     activity: IDLE,
     energy: Math.max(0, entity.energy - 10),
     carrying: { type: 'wood' as const, amount: WOOD_PER_CHOP },
+  };
+}
+
+function completeMining(
+  entity: Entity,
+  goldDeposits: GoldDeposit[],
+  tickNum: number,
+  logEvent: LogEventFn,
+): Entity {
+  const depositIdx = goldDeposits.findIndex(d =>
+    d.remaining > 0 && manhattan(entity.position, d.position) === 1
+  );
+  if (depositIdx < 0) {
+    return { ...entity, activity: IDLE, energy: Math.max(0, entity.energy - 5) };
+  }
+  const deposit = goldDeposits[depositIdx];
+  const take = Math.min(ECONOMY.gold.unitsPerMine, deposit.remaining);
+  goldDeposits[depositIdx] = {
+    ...deposit,
+    remaining: deposit.remaining - take,
+    depletedAt: deposit.remaining - take <= 0 ? tickNum : deposit.depletedAt,
+  };
+  logEvent(entity, 'mine', { detail: `+${take} gold` });
+  return {
+    ...entity,
+    activity: IDLE,
+    energy: Math.max(0, entity.energy - 10),
+    carrying: { type: 'gold' as const, amount: take },
   };
 }
 
@@ -1042,7 +1088,7 @@ export function tick(state: WorldState): WorldState {
       case 'hunting':   return completeHunting(e, animals, logEvent);
       case 'gathering': return completeGathering(e, trees);
       case 'fighting':  return completeFighting(e);
-      case 'mining':    return { ...e, activity: IDLE }; // TODO: completeMining (Task 3)
+      case 'mining':    return completeMining(e, state.goldDeposits, tickNum, logEvent);
     }
   });
 
@@ -1191,7 +1237,7 @@ export function tick(state: WorldState): WorldState {
     const steps = effectivePace === 'run' ? baseSpeed * 2 : baseSpeed;
 
     // Arrival: structure/social targets stop adjacent; other targets require exact tile.
-    const structureStop = (p: Purpose) => p === 'deposit' || p === 'cook';
+    const structureStop = (p: Purpose) => p === 'deposit' || p === 'cook' || p === 'mine';
 
     for (let step = 0; step < steps; step++) {
       if (entity.activity.kind !== 'moving') break;
@@ -1223,6 +1269,7 @@ export function tick(state: WorldState): WorldState {
         case 'chop':    entity = resolveChopArrival(entity, trees, biomes); break;
         case 'build':   entity = resolveBuildArrival(entity, biomes, gridSize, houses, updatedVillages, getVillage); break;
         case 'cook':    entity = resolveCookArrival(entity, getVillage); break;
+        case 'mine':    entity = resolveMineArrival(entity, state.goldDeposits, biomes); break;
         case 'deposit': entity = depositCarrying({ ...entity, activity: IDLE }, getVillage); break;
       }
       entities[idx] = entity;
