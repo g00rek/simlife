@@ -4,6 +4,7 @@ import { ageInYears } from '../engine/world';
 import {
   Axe,
   Baby,
+  Coins,
   CookingPot,
   GenderFemale,
   GenderMale,
@@ -175,6 +176,10 @@ export function Stats({ world }: StatsProps) {
               <div style={stockRowStyle}>
                 <span style={{ color: '#8d6e63' }}>wood</span>
                 <span style={stockNumStyle}>{v.woodStore}</span>
+              </div>
+              <div style={stockRowStyle}>
+                <span style={{ color: '#f0c040' }}>gold</span>
+                <span style={stockNumStyle}>{v.goldStore}</span>
               </div>
               <div style={{ fontSize: '10px', color: '#666', marginTop: '2px', borderTop: '1px solid #2a2b35', paddingTop: '2px' }}>
                 food total: {totalRaw + totalCooked} ({totalRaw} raw + {totalCooked} cooked)
