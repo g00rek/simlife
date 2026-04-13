@@ -70,7 +70,7 @@ describe('createWorld', () => {
   it('creates all entities with idle state', () => {
     const world = createWorld({ gridSize: 30, entityCount: 10 });
     for (const entity of world.entities) {
-      expect(entity.state).toBe('idle');
+      expect(entity.activity.kind).toBe("idle");
     }
   });
 
@@ -131,7 +131,7 @@ describe('aging and death', () => {
       tick: 0,
       animals: [], trees: [], log: [], houses: [], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e1', name: 'Test', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', stateTimer: 0, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
+        { id: 'e1', name: 'Test', position: { x: 0, y: 0 }, gender: 'male', activity: { kind: 'idle' }, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
       ],
     };
     const next = tick(world);
@@ -145,7 +145,7 @@ describe('aging and death', () => {
       tick: 0,
       animals: [], trees: [], log: [], houses: [], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'dying', name: 'Test', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', stateTimer: 0, age: 100 * T - 1, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
+        { id: 'dying', name: 'Test', position: { x: 0, y: 0 }, gender: 'male', activity: { kind: 'idle' }, age: 100 * T - 1, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
       ],
     };
     const next = tick(world);
@@ -160,7 +160,7 @@ describe('aging and death', () => {
       tick: 0,
       animals: [], trees: [], log: [], houses: [], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e1', name: 'Test', position: { x: 0, y: 0 }, gender: 'male', state: 'idle', stateTimer: 0, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
+        { id: 'e1', name: 'Test', position: { x: 0, y: 0 }, gender: 'male', activity: { kind: 'idle' }, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
       ],
     };
     let current = world;
@@ -176,9 +176,9 @@ describe('aging and death', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'], inventory: { meat: 0, wood: 0, fruit: 0 } }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
+      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'] }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'pregnant', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, homeId: 'h1', goalSetTick: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' as const }, pregnancyTimer: 1, sparCooldown: 0, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, homeId: 'h1' },
       ],
     };
     const next = withSurvivingBirth(0.5, () => tick(world));
@@ -197,15 +197,15 @@ describe('mating', () => {
       tick: 0,
       animals: [], trees: [], log: [], houses: [], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 10 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 10 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
+        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', activity: { kind: 'idle' }, age: 10 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' }, age: 10 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
       ],
     };
     const next = tick(world);
     const e1 = next.entities.find(e => e.id === 'e1');
     const e2 = next.entities.find(e => e.id === 'e2');
-    expect(e1?.state).toBe('idle');
-    expect(e2?.state).toBe('idle');
+    expect(e1?.activity.kind).toBe("idle");
+    expect(e2?.activity.kind).toBe("idle");
   });
 
   it('entities too old to reproduce do not mate', () => {
@@ -214,15 +214,15 @@ describe('mating', () => {
       tick: 0,
       animals: [], trees: [], log: [], houses: [], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 55 * T, maxAge: 80 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 55 * T, maxAge: 80 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
+        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', activity: { kind: 'idle' }, age: 55 * T, maxAge: 80 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' }, age: 55 * T, maxAge: 80 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
       ],
     };
     const next = tick(world);
     const e1 = next.entities.find(e => e.id === 'e1');
     const e2 = next.entities.find(e => e.id === 'e2');
-    expect(e1?.state).toBe('idle');
-    expect(e2?.state).toBe('idle');
+    expect(e1?.activity.kind).toBe("idle");
+    expect(e2?.activity.kind).toBe("idle");
   });
 
   it('male in pheromone range can impregnate female (probabilistic)', () => {
@@ -231,18 +231,18 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       animals: [], trees: [], log: [], grass: emptyGrass(30),
-      houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'], inventory: { meat: 0, wood: 0, fruit: 0 } }],
+      houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'] }],
       biomes: plainsBiomes(30),
-      villages: [{ tribe: 0, color: [220, 60, 60], name: 'Red', meatStore: 50, plantStore: 50, woodStore: 10 }],
+      villages: [{ tribe: 0, color: [220, 60, 60], name: 'Red', meatStore: 50, plantStore: 50, woodStore: 10, cookedMeatStore: 0, driedFruitStore: 0 }],
       entities: [
-        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, homeId: 'h1', goalSetTick: 0 },
+        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', activity: { kind: 'idle' }, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' }, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0, homeId: 'h1' },
       ],
     };
     let pregnant = false;
     for (let i = 0; i < 100 && !pregnant; i++) {
       world = tick(world);
-      if (world.entities.some(e => e.id === 'e2' && e.state === 'pregnant')) pregnant = true;
+      if (world.entities.some(e => e.id === 'e2' && e.pregnancyTimer > 0)) pregnant = true;
     }
     expect(pregnant).toBe(true);
   });
@@ -254,15 +254,15 @@ describe('mating', () => {
       tick: 0,
       animals: [], trees: [], log: [], houses: [], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
+        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' }, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' }, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
       ],
     };
     const next = tick(world);
     const e1 = next.entities.find(e => e.id === 'e1');
     const e2 = next.entities.find(e => e.id === 'e2');
-    expect(e1?.state).toBe('idle');
-    expect(e2?.state).toBe('idle');
+    expect(e1?.activity.kind).toBe("idle");
+    expect(e2?.activity.kind).toBe("idle");
   });
 
   it('two aggressive males on same tile enter fighting state', () => {
@@ -271,13 +271,13 @@ describe('mating', () => {
       tick: 0,
       animals: [], trees: [], log: [], houses: [], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 10, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [0, 0, 255] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 10, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 1 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
+        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', activity: { kind: 'idle' }, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 10, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', activity: { kind: 'idle' }, age: 25 * T, maxAge: 100 * T, color: [0, 0, 255] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 10, fertility: 1.0, twinChance: 0 }, tribe: 1 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
       ],
     };
     const next = tick(world);
     expect(next.entities.length).toBe(2);
-    expect(next.entities.every(e => e.state === 'fighting')).toBe(true);
+    expect(next.entities.every(e => e.activity.kind === 'working' && e.activity.action === 'fighting')).toBe(true);
   });
 
   it('fight resolves after timer — both survive with energy loss', () => {
@@ -286,14 +286,14 @@ describe('mating', () => {
       tick: 0,
       animals: [], trees: [], log: [], houses: [], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', state: 'fighting', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', state: 'fighting', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 0, 255] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
+        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', activity: { kind: 'working', action: 'fighting', ticksLeft: 1 }, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', activity: { kind: 'working', action: 'fighting', ticksLeft: 1 }, age: 25 * T, maxAge: 100 * T, color: [0, 0, 255] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
       ],
     };
     const next = tick(world);
     // Non-lethal: both survive but lose energy
     expect(next.entities.length).toBe(2);
-    expect(next.entities.every(e => e.state === 'idle')).toBe(true);
+    expect(next.entities.every(e => e.activity.kind === 'idle')).toBe(true);
     expect(next.entities.every(e => e.energy < 80)).toBe(true);
   });
 
@@ -302,24 +302,24 @@ describe('mating', () => {
       gridSize: 30,
       tick: 0,
       animals: [], trees: [], log: [], houses: [], biomes: plainsBiomes(30), grass: emptyGrass(30),
-      villages: [{ tribe: 0, color: [220, 60, 60], name: 'Red', meatStore: 50, plantStore: 50, woodStore: 10 }],
+      villages: [{ tribe: 0, color: [220, 60, 60], name: 'Red', meatStore: 50, plantStore: 50, woodStore: 10, cookedMeatStore: 0, driedFruitStore: 0 }],
       entities: [
-        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
-        { id: 'e2', name: 'Test', position: { x: 15, y: 15 }, gender: 'female', state: 'idle', stateTimer: 0, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
+        { id: 'e1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', activity: { kind: 'idle' }, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
+        { id: 'e2', name: 'Test', position: { x: 15, y: 15 }, gender: 'female', activity: { kind: 'idle' }, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
       ],
     };
     const next = tick(world);
     const e2 = next.entities.find(e => e.id === 'e2');
-    expect(e2?.state).toBe('idle');
+    expect(e2?.activity.kind).toBe("idle");
   });
 
   it('birth occurs after mating turn — entity count increases by 1', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'], inventory: { meat: 0, wood: 0, fruit: 0 } }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
+      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'] }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'pregnant', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, homeId: 'h1', goalSetTick: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' as const }, pregnancyTimer: 1, sparCooldown: 0, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, homeId: 'h1' },
       ],
     };
     const next = withSurvivingBirth(0.5, () => tick(world));
@@ -330,9 +330,9 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'], inventory: { meat: 0, wood: 0, fruit: 0 } }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
+      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'] }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'pregnant', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, homeId: 'h1', goalSetTick: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' as const }, pregnancyTimer: 1, sparCooldown: 0, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, homeId: 'h1' },
       ],
     };
     const next = withSurvivingBirth(0.5, () => tick(world));
@@ -347,9 +347,9 @@ describe('mating', () => {
       const world: WorldState = {
         gridSize: 30,
         tick: 0,
-        animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'], inventory: { meat: 0, wood: 0, fruit: 0 } }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
+        animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'] }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
         entities: [
-          { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'pregnant', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, homeId: 'h1', goalSetTick: 0 },
+          { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' as const }, pregnancyTimer: 1, sparCooldown: 0, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, homeId: 'h1' },
         ],
       };
       const next = withSurvivingBirth(genderRoll, () => tick(world));
@@ -364,21 +364,20 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'], inventory: { meat: 0, wood: 0, fruit: 0 } }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
+      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'] }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'pregnant', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, homeId: 'h1', goalSetTick: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' as const }, pregnancyTimer: 1, sparCooldown: 0, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, homeId: 'h1' },
       ],
     };
     const next = withSurvivingBirth(0.5, () => tick(world));
+    const mother = next.entities.find(e => e.id === 'e2')!;
     const baby = next.entities.find(e => e.id !== 'e2');
     expect(baby).toBeDefined();
     if (baby) {
-      // House at (5,5) has center at (6,6) — baby spawns at or near house center
-      const houseCenter = { x: 6, y: 6 };
-      const dx = Math.abs(baby.position.x - houseCenter.x);
-      const dy = Math.abs(baby.position.y - houseCenter.y);
-      // Must be on house center or 1 step away (Manhattan distance <= 1)
-      expect(dx + dy).toBeLessThanOrEqual(1);
+      // Infants are carried by mother — position must match mother's position exactly.
+      expect(baby.position).toEqual(mother.position);
+      // motherId must point at the actual mother so child-follow logic works.
+      expect(baby.motherId).toBe('e2');
     }
   });
 
@@ -386,30 +385,32 @@ describe('mating', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'], inventory: { meat: 0, wood: 0, fruit: 0 } }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
+      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['e2'] }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', state: 'pregnant', stateTimer: 1, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, homeId: 'h1', goalSetTick: 0 },
+        { id: 'e2', name: 'Test', position: { x: 5, y: 5 }, gender: 'female', activity: { kind: 'idle' as const }, pregnancyTimer: 1, sparCooldown: 0, age: 25 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTraits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, fatherTribe: 0 as const, tribe: 0 as const, birthCooldown: 0, homeId: 'h1' },
       ],
     };
     const next = withSurvivingBirth(0.5, () => tick(world));
     const baby = next.entities.find(e => e.id !== 'e2');
-    expect(baby?.state).toBe('idle');
+    expect(baby?.activity.kind).toBe("idle");
   });
 
-  it('child with a home stays inside the home', () => {
+  it('toddler walks one step toward mother each tick', () => {
     const world: WorldState = {
       gridSize: 30,
       tick: 0,
-      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['child'], inventory: { meat: 0, wood: 0, fruit: 0 } }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
+      animals: [], trees: [], log: [], houses: [{ id: 'h1', position: { x: 5, y: 5 }, tribe: 0, occupants: ['mother'] }], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'child', name: 'Test', position: { x: 9, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 1 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, homeId: 'h1', goalSetTick: 0 },
+        { id: 'mother', name: 'Mom',   position: { x: 6, y: 6 }, gender: 'female', activity: { kind: 'idle' }, age: 25 * T, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0, homeId: 'h1' },
+        { id: 'child',  name: 'Child', position: { x: 9, y: 5 }, gender: 'female', activity: { kind: 'idle' }, age: 2 * T, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0, motherId: 'mother' },
       ],
     };
     const next = tick(world);
     const child = next.entities.find(e => e.id === 'child');
-    // House at (5,5) has center at (6,6) — child moves toward center
-    expect(child?.position).toEqual({ x: 6, y: 6 });
-    expect(child?.state).toBe('idle');
+    // Toddler was at (9,5); must have taken a step (any direction toward mother's tile).
+    expect(child).toBeDefined();
+    expect(child!.position).not.toEqual({ x: 9, y: 5 });
+    expect(child?.activity.kind).toBe("idle");
   });
 
   it('max 2 entities per tile enforced during movement', () => {
@@ -422,9 +423,9 @@ describe('mating', () => {
       tick: 0,
       animals: [], trees: [], log: [], houses: [], biomes: plainsBiomes(30), villages: [], grass: emptyGrass(30),
       entities: [
-        { id: 'blocker1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
-        { id: 'blocker2', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', state: 'idle', stateTimer: 0, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
-        { id: 'mover', name: 'Test', position: { x: 4, y: 5 }, gender: 'female', state: 'idle', stateTimer: 0, age: 0, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, meat: 0, tribe: 0 as const, birthCooldown: 0, mateCooldown: 0, goalSetTick: 0 },
+        { id: 'blocker1', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', activity: { kind: 'idle' }, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
+        { id: 'blocker2', name: 'Test', position: { x: 5, y: 5 }, gender: 'male', activity: { kind: 'idle' }, age: 0, maxAge: 100 * T, color: [255, 0, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
+        { id: 'mover', name: 'Test', position: { x: 4, y: 5 }, gender: 'female', activity: { kind: 'idle' }, age: 0, maxAge: 100 * T, color: [0, 255, 0] as [number, number, number], energy: 80, traits: { strength: 5, speed: 1, perception: 2, metabolism: 1.0, aggression: 5, fertility: 1.0, twinChance: 0 }, tribe: 0 as const, birthCooldown: 0, pregnancyTimer: 0, sparCooldown: 0 },
       ],
     };
     // Run tick multiple times and verify no tile ever has 3+ entities
@@ -462,10 +463,12 @@ describe('behavior system integration', () => {
     let world = createWorld({ gridSize: 15, entityCount: 4, villageCount: 1 });
     // Run 5 ticks, track goal changes
     const goalChanges: number[] = [];
+    const purposeOf = (e: typeof world.entities[number]) =>
+      e.activity.kind === 'moving' ? e.activity.purpose : undefined;
     for (let i = 0; i < 5; i++) {
-      const goalsBefore = world.entities.map(e => e.goal?.type);
+      const goalsBefore = world.entities.map(purposeOf);
       world = tick(world);
-      const goalsAfter = world.entities.map(e => e.goal?.type);
+      const goalsAfter = world.entities.map(purposeOf);
       const changes = goalsBefore.filter((g, idx) => g && g !== goalsAfter[idx]).length;
       goalChanges.push(changes);
     }

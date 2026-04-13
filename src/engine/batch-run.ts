@@ -1,7 +1,7 @@
 import { createWorld, tick } from './world';
 import { TICKS_PER_YEAR } from './types';
 
-const RUNS = 100;
+const RUNS = 20;
 const MAX_TICKS = 48000; // 20 years
 const GRID = 30;
 const ENTITIES = 4;
@@ -13,7 +13,7 @@ interface RunResult {
   extinctYear: number | null;
   peakPop: number;
   births: number;
-  deaths: { total: number; oldAge: number; starvation: number; cold: number; fight: number; childbirth: number; noHome: number };
+  deaths: { total: number; oldAge: number; starvation: number; fight: number; childbirth: number; noHome: number };
   houses: number;
   finalPop: number;
   pregnant: number;
@@ -37,9 +37,9 @@ for (let r = 0; r < RUNS; r++) {
       lastLogYear = year;
       const m = world.entities.filter(e => e.gender === 'male').length;
       const f = world.entities.filter(e => e.gender === 'female').length;
-      const preg = world.entities.filter(e => e.state === 'pregnant').length;
+      const preg = world.entities.filter(e => e.pregnancyTimer > 0).length;
       const v = world.villages[0];
-      timeline.push(`Y${year}: pop=${world.entities.length}(M${m}F${f}) preg=${preg} houses=${world.houses.length} meat=${v?.meatStore ?? 0} plant=${v?.plantStore ?? 0} wood=${v?.woodStore ?? 0} animals=${world.animals.length}`);
+      timeline.push(`Y${year}: pop=${world.entities.length}(M${m}F${f}) preg=${preg} houses=${world.houses.length} meat=${v?.meatStore ?? 0} plant=${v?.plantStore ?? 0} cooked=${(v?.cookedMeatStore ?? 0)+(v?.driedFruitStore ?? 0)} wood=${v?.woodStore ?? 0} animals=${world.animals.length}`);
     }
 
     if (world.entities.length === 0) break;
@@ -63,14 +63,13 @@ for (let r = 0; r < RUNS; r++) {
       total: deaths.length,
       oldAge: deaths.filter(d => d.cause === 'old_age').length,
       starvation: realStarvation,
-      cold: deaths.filter(d => d.cause === 'cold').length,
       fight: deaths.filter(d => d.cause === 'fight').length,
       childbirth: deaths.filter(d => d.cause === 'childbirth').length,
       noHome: noHomeBabyDeaths,
     },
     houses: world.houses.length,
     finalPop: world.entities.length,
-    pregnant: world.entities.filter(e => e.state === 'pregnant').length,
+    pregnant: world.entities.filter(e => e.pregnancyTimer > 0).length,
     timeline,
   });
 }
@@ -80,7 +79,7 @@ console.log(`=== BATCH RESULTS (${RUNS} runs, ${GRID}x${GRID}, 1 village, ${ENTI
 
 for (const r of results) {
   const status = r.extinctTick ? `EXTINCT Y${r.extinctYear} (tick ${r.extinctTick})` : `ALIVE pop=${r.finalPop}`;
-  console.log(`Run ${r.run}: ${status} | peak=${r.peakPop} | births=${r.births} | deaths=${r.deaths.total} (age=${r.deaths.oldAge} starv=${r.deaths.starvation} cold=${r.deaths.cold} fight=${r.deaths.fight} birth=${r.deaths.childbirth} noHome=${r.deaths.noHome}) | houses=${r.houses}`);
+  console.log(`Run ${r.run}: ${status} | peak=${r.peakPop} | births=${r.births} | deaths=${r.deaths.total} (age=${r.deaths.oldAge} starv=${r.deaths.starvation} fight=${r.deaths.fight} birth=${r.deaths.childbirth} noHome=${r.deaths.noHome}) | houses=${r.houses}`);
 }
 
 console.log('\n=== TIMELINES ===\n');
@@ -108,9 +107,7 @@ const avgPeak = results.reduce((s, r) => s + r.peakPop, 0) / RUNS;
 const avgBirths = results.reduce((s, r) => s + r.births, 0) / RUNS;
 const avgNoHome = results.reduce((s, r) => s + r.deaths.noHome, 0) / RUNS;
 const avgStarv = results.reduce((s, r) => s + r.deaths.starvation, 0) / RUNS;
-const avgCold = results.reduce((s, r) => s + r.deaths.cold, 0) / RUNS;
 console.log(`Avg peak pop: ${avgPeak.toFixed(1)}`);
 console.log(`Avg births: ${avgBirths.toFixed(1)}`);
 console.log(`Avg no-home baby deaths: ${avgNoHome.toFixed(1)}`);
 console.log(`Avg starvation deaths: ${avgStarv.toFixed(1)}`);
-console.log(`Avg cold deaths: ${avgCold.toFixed(1)}`);

@@ -2,6 +2,7 @@
 
 import { tick } from './world';
 import type { WorldState } from './types';
+import { RUNTIME_CONFIG } from './types';
 
 interface HistoryPoint {
   pop: number[];
@@ -12,7 +13,9 @@ type WorkerRequest =
   | { type: 'start' }
   | { type: 'stop' }
   | { type: 'setSpeed'; speed: number }
-  | { type: 'reset'; world: WorldState; speed: number };
+  | { type: 'reset'; world: WorldState; speed: number }
+  | { type: 'setRuntimeConfig'; config: Partial<typeof RUNTIME_CONFIG> }
+  | { type: 'skip'; ticks: number };
 
 type WorkerResponse =
   | { type: 'snapshot'; world: WorldState; samples: HistoryPoint[]; running: boolean };
@@ -127,6 +130,26 @@ ctx.onmessage = (event: MessageEvent<WorkerRequest>) => {
     case 'setSpeed':
       speed = message.speed;
       schedule();
+      break;
+    case 'setRuntimeConfig':
+      // Worker has its own RUNTIME_CONFIG instance — sync from main thread.
+      Object.assign(RUNTIME_CONFIG, message.config);
+      break;
+    case 'skip':
+      // Burst-compute N ticks at max speed. Population samples still collected for the
+      // history chart. One snapshot at the end — no intermediate renders, no animation.
+      if (!world) break;
+      for (let i = 0; i < message.ticks; i++) {
+        if (world.entities.length === 0) {
+          running = false;
+          break;
+        }
+        world = tick(world);
+        if (world.tick % POP_SAMPLE_INTERVAL === 0) {
+          pendingSamples.push(populationSample(world));
+        }
+      }
+      if (world) postSnapshot(world);
       break;
   }
 };

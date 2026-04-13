@@ -33,8 +33,12 @@ for (let t = 0; t < TICKS; t++) {
       const scores = getScores(ctx);
       const action = decideAction(ctx);
       const topScore = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+      const a = e.activity;
+      const actDesc = a.kind === 'idle' ? 'idle'
+        : a.kind === 'moving' ? `moving/${a.purpose}(${a.pace})`
+        : `working/${a.action}(${a.ticksLeft}t)`;
       console.log(
-        `  ${e.id} ${e.gender === 'male' ? '♂' : '♀'} age=${ageInYears(e)} pos=(${e.position.x},${e.position.y}) state=${e.state}${e.stateTimer > 0 ? `(${e.stateTimer})` : ''} energy=${Math.round(e.energy)} home=${e.homeId ?? '-'} → ${action.type} [${topScore?.[0]}=${topScore?.[1].toFixed(2)}]`
+        `  ${e.id} ${e.gender === 'male' ? '♂' : '♀'} age=${ageInYears(e)} pos=(${e.position.x},${e.position.y}) ${actDesc} energy=${Math.round(e.energy)} home=${e.homeId ?? '-'} → ${action.type} [${topScore?.[0]}=${topScore?.[1].toFixed(2)}]`
       );
     }
     console.log('');
@@ -60,5 +64,4 @@ console.log(`Deaths: ${world.log.filter(l => l.type === 'death').length}`);
 const deaths = world.log.filter(l => l.type === 'death');
 console.log(`  Old age: ${deaths.filter(d => d.cause === 'old_age').length}`);
 console.log(`  Starvation: ${deaths.filter(d => d.cause === 'starvation').length}`);
-console.log(`  Cold: ${deaths.filter(d => d.cause === 'cold').length}`);
 console.log(`  Fight: ${deaths.filter(d => d.cause === 'fight').length}`);

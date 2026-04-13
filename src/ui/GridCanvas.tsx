@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import type { WorldState, Entity, Village } from '../engine/types';
-import { CHILD_AGE, TICKS_PER_DAY, TICKS_PER_YEAR } from '../engine/types';
+import { CHILD_AGE, TICKS_PER_DAY, TICKS_PER_YEAR, RUNTIME_CONFIG } from '../engine/types';
 import { ageInYears } from '../engine/world';
 import { drawSurfaceLayer, drawWaterLayer, drawTreeLayer, drawGrassLayer } from './terrain/renderer';
 import type { Season } from './terrain/renderer';
@@ -20,7 +20,9 @@ interface GridCanvasProps {
   size: number;
   selectedId: string | null;
   selectedTile?: { x: number; y: number } | null;
-  onClick: (gridX: number, gridY: number) => void;
+  onClick: (gridX: number, gridY: number, clientX: number, clientY: number) => void;
+  // Alpha territory + leash overlays — debug visualization for /animals page only.
+  showHerdOverlays?: boolean;
 }
 
 interface SpriteAssets {
@@ -220,25 +222,23 @@ function drawAnimalSprite(
   frameIdx: number,
   moving: boolean,
   facingLeft: boolean,
+  grazing: boolean = false,
 ) {
   const frames = moving ? ANIMAL_RUN[gender] : ANIMAL_IDLE[gender];
   const frame = frames[frameIdx % frames.length];
   const dstW = Math.round(cellSize * 0.86);
   const dstH = Math.round(cellSize * 0.86);
-  const dx = Math.round(cx - dstW / 2);
-  const dy = Math.round(cy - dstH / 2);
   ctx.imageSmoothingEnabled = false;
   const si = 0.1;
-  if (facingLeft) {
-    ctx.save();
-    ctx.translate(cx, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(sprites.animals, frame.sx + si, frame.sy + si, 8 - si * 2, 8 - si * 2,
-      Math.round(-dstW / 2), dy, Math.round(dstW), Math.round(dstH));
-    ctx.restore();
-  } else {
-    ctx.drawImage(sprites.animals, frame.sx + si, frame.sy + si, 8 - si * 2, 8 - si * 2, dx, dy, Math.round(dstW), Math.round(dstH));
-  }
+  // Grazing posture — head tilted down (rotate ~25°). Bobs slightly with frame for "chewing" feel.
+  const tilt = grazing ? (Math.PI / 7) * (frameIdx % 2 === 0 ? 1 : 0.7) : 0;
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (facingLeft) ctx.scale(-1, 1);
+  if (tilt) ctx.rotate(tilt);
+  ctx.drawImage(sprites.animals, frame.sx + si, frame.sy + si, 8 - si * 2, 8 - si * 2,
+    Math.round(-dstW / 2), Math.round(-dstH / 2), Math.round(dstW), Math.round(dstH));
+  ctx.restore();
 }
 
 type ActionBadge = 'fight' | 'train' | 'hunt' | 'gather' | 'chop' | 'build';
@@ -269,7 +269,7 @@ function lerpPos(prev: PosRecord, curr: PosRecord, t: number): PosRecord {
   return { x: prev.x + (curr.x - prev.x) * t, y: prev.y + (curr.y - prev.y) * t };
 }
 
-export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: GridCanvasProps) {
+export function GridCanvas({ world, size, selectedId, selectedTile, onClick, showHerdOverlays = false }: GridCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const backgroundCacheRef = useRef<{ key: string; canvas: HTMLCanvasElement } | null>(null);
   const spritesRef = useRef<SpriteAssets | null>(null);
@@ -289,7 +289,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     const scale = size / rect.width;
     const x = Math.floor((e.clientX - rect.left) * scale / (size / world.gridSize));
     const y = Math.floor((e.clientY - rect.top) * scale / (size / world.gridSize));
-    onClick(x, y);
+    onClick(x, y, e.clientX, e.clientY);
   };
 
   useEffect(() => {
@@ -323,14 +323,25 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
   const currEntityPos = useRef<Map<string, PosRecord>>(new Map());
   const currAnimalPos = useRef<Map<string, PosRecord>>(new Map());
 
+  // SNAP_TICK_THRESHOLD — if the world advanced more than this many ticks in one frame
+  // (e.g. after a Skip), don't lerp positions: entities just appear in their new tile.
+  // Lerping a 100+ tile jump looks like a teleport-slide across the map.
+  const SNAP_TICK_THRESHOLD = 5;
+  const tickDelta = world.tick - lastTickRef.current;
+  const isSnap = tickDelta > SNAP_TICK_THRESHOLD || tickDelta < 0;
+
   if (world.tick !== lastTickRef.current) {
-    // Measure actual tick interval for smooth lerp
     const now = performance.now();
     const interval = now - tickTimeRef.current;
     if (interval > 10 && interval < 5000) tickIntervalRef.current = interval;
-    // Promote current → prev
-    prevEntityPos.current = currEntityPos.current;
-    prevAnimalPos.current = currAnimalPos.current;
+    if (isSnap) {
+      // Wipe prev maps so the lerp resolves to the new positions immediately.
+      prevEntityPos.current = new Map();
+      prevAnimalPos.current = new Map();
+    } else {
+      prevEntityPos.current = currEntityPos.current;
+      prevAnimalPos.current = currAnimalPos.current;
+    }
     lastTickRef.current = world.tick;
     tickTimeRef.current = now;
   }
@@ -341,6 +352,12 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
   const aMap = new Map<string, PosRecord>();
   for (const a of world.animals) aMap.set(a.id, { ...a.position });
   currAnimalPos.current = aMap;
+  // After a snap, prime prev maps with current so subsequent normal ticks lerp from a
+  // sensible starting point (not from "no record" → fallback).
+  if (isSnap) {
+    prevEntityPos.current = new Map(eMap);
+    prevAnimalPos.current = new Map(aMap);
+  }
 
   // rAF render loop — runs at 60fps, interpolates positions between ticks
   useEffect(() => {
@@ -439,12 +456,36 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       drawHouseSprite(ctx, sprites, hx, hy, cellSize, house.tribe, Math.floor(frameCount / 12));
     }
 
-    // --- Draw animals (interpolated) ---
-    // Assign herd numbers (1, 2, 3...) from unique alphas
-    const herdIds = [...new Set(world.animals.map(a => a.herdAlpha))];
-    const herdNumMap = new Map<string, number>();
-    herdIds.forEach((id, i) => herdNumMap.set(id, i + 1));
+    // --- Herd overlay (debug — /animals page only) ---
+    // Shows the herd's centroid plus a dashed leash zone (max stray distance for any animal).
+    if (showHerdOverlays && world.animals.length > 0) {
+      let sx = 0, sy = 0;
+      for (const a of world.animals) { sx += a.position.x; sy += a.position.y; }
+      const cx = (sx / world.animals.length) * cellSize + cellSize / 2;
+      const cy = (sy / world.animals.length) * cellSize + cellSize / 2;
+      const r = RUNTIME_CONFIG.herdLeash * cellSize;
 
+      // Leash zone — dashed red diamond
+      ctx.strokeStyle = 'rgba(220, 60, 60, 0.85)';
+      ctx.lineWidth = Math.max(1, cellSize * 0.1);
+      ctx.setLineDash([Math.max(2, cellSize * 0.3), Math.max(2, cellSize * 0.2)]);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r, cy);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r, cy);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Centroid marker — small filled circle
+      ctx.fillStyle = 'rgba(220, 60, 60, 0.9)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(2, cellSize * 0.15), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // --- Draw animals (interpolated) ---
     for (const animal of world.animals) {
       const prev = prevAnimalPos.current.get(animal.id) ?? animal.position;
       const pos = lerpPos(prev, animal.position, t);
@@ -452,24 +493,30 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
       const cy = pos.y * cellSize + cellSize / 2;
       const moving = prev.x !== animal.position.x || prev.y !== animal.position.y;
       const facingLeft = animal.position.x < prev.x;
+      // Grazing detected when stationary on a grass tile + not panicking + not full energy
+      const grazing = !moving && animal.panicTicks === 0
+        && (world.grass[animal.position.y]?.[animal.position.x] ?? 0) > 0
+        && animal.energy < 100;
       const animalFrame = moving
         ? Math.floor(frameCount / 15) % 2   // running: faster animation (~0.25s)
-        : Math.floor(frameCount / 60) % 2;  // idle: slow animation (~1s)
-      drawAnimalSprite(ctx, sprites, cx, cy, cellSize, animal.gender, animalFrame, moving, facingLeft);
+        : grazing
+          ? Math.floor(frameCount / 30) % 2  // chewing: medium tempo (~0.5s, head bobs)
+          : Math.floor(frameCount / 60) % 2; // idle: slow animation (~1s)
+      drawAnimalSprite(ctx, sprites, cx, cy, cellSize, animal.gender, animalFrame, moving, facingLeft, grazing);
 
-      // Herd number (+ alpha symbol for alpha male)
-      const herdNum = herdNumMap.get(animal.herdAlpha) ?? 0;
-      const isAlpha = animal.id === animal.herdAlpha;
-      const label = isAlpha ? `α${herdNum}` : String(herdNum);
-      const fontSize = Math.max(8, Math.round(cellSize * 0.45));
-      ctx.font = `bold ${fontSize}px system-ui`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillStyle = isAlpha ? '#ffd700' : '#fff';
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = Math.max(1, fontSize * 0.2);
-      ctx.strokeText(label, cx, cy - cellSize * 0.3);
-      ctx.fillText(label, cx, cy - cellSize * 0.3);
+      // Energy bar (above sprite) — green→yellow→red as energy drops
+      const barW = Math.round(cellSize * 0.7);
+      const barH = Math.max(2, Math.round(cellSize * 0.08));
+      const barX = Math.round(cx - barW / 2);
+      const barY = Math.round(cy - cellSize * 0.55);
+      const energyPct = Math.max(0, Math.min(1, animal.energy / 100));
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(barX, barY, barW, barH);
+      // color: green (>60), yellow (30-60), red (<30)
+      const barColor = energyPct > 0.6 ? '#9ece6a' : energyPct > 0.3 ? '#e0af68' : '#f7768e';
+      ctx.fillStyle = barColor;
+      ctx.fillRect(barX, barY, Math.round(barW * energyPct), barH);
+
     }
 
     // --- Group entities by tile ---
@@ -502,12 +549,14 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     const draws: DrawData[] = [];
     const tileIcons: Array<{ cx: number; cy: number; kind: ActionBadge }> = [];
 
+    const workingAction = (e: Entity) => e.activity.kind === 'working' ? e.activity.action : undefined;
+
     for (const [, group] of tileMap) {
       const count = group.length;
-      const hasFighting = group.some(e => e.state === 'fighting');
-      const hasTraining = group.some(e => e.state === 'training');
-      const hasHunting = group.some(e => e.state === 'hunting');
-      const hasGathering = group.some(e => e.state === 'gathering');
+      const hasFighting = group.some(e => workingAction(e) === 'fighting');
+      const hasTraining = group.some(e => workingAction(e) === 'training');
+      const hasHunting = group.some(e => workingAction(e) === 'hunting');
+      const hasGathering = group.some(e => workingAction(e) === 'gathering');
 
       for (let i = 0; i < count; i++) {
         const entity = group[i];
@@ -536,7 +585,7 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
           gender: entity.gender,
           tribe: entity.tribe,
           age: ageInYears(entity),
-          state: entity.state,
+          state: workingAction(entity) ?? (entity.activity.kind === 'moving' ? entity.activity.purpose : 'idle'),
           energy: entity.energy,
           id: entity.id,
           child: ageInYears(entity) < CHILD_AGE,
@@ -557,9 +606,9 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
         tileIcons.push({ cx: baseCx, cy: baseCy, kind: 'hunt' });
       } else if (hasGathering) {
         tileIcons.push({ cx: baseCx, cy: baseCy, kind: 'gather' });
-      } else if (group.some(e => e.state === 'chopping')) {
+      } else if (group.some(e => workingAction(e) === 'chopping')) {
         tileIcons.push({ cx: baseCx, cy: baseCy, kind: 'chop' });
-      } else if (group.some(e => e.state === 'building')) {
+      } else if (group.some(e => workingAction(e) === 'building')) {
         tileIcons.push({ cx: baseCx, cy: baseCy, kind: 'build' });
       }
     }
@@ -577,61 +626,58 @@ export function GridCanvas({ world, size, selectedId, selectedTile, onClick }: G
     ctx.textBaseline = 'alphabetic';
     ctx.font = '10px system-ui';
 
-    // Draw tracking lines — males to nearest animal, females to nearest plant
-    ctx.setLineDash([3, 3]);
-    ctx.lineWidth = 0.5;
+    // Draw grid overlay — thin lines between every tile so cell boundaries are visible.
+    // Useful for verifying tile-based mechanics (house size, distances, paths).
+    {
+      const w = world.gridSize * cellSize;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= world.gridSize; i++) {
+        const p = Math.floor(i * cellSize) + 0.5; // .5 offset for crisp 1px lines
+        ctx.moveTo(p, 0); ctx.lineTo(p, w);
+        ctx.moveTo(0, p); ctx.lineTo(w, p);
+      }
+      ctx.stroke();
+    }
+
+    // Draw Manhattan goal-path as DOTS only (Interface.png|48,136,8,8).
+    // Size: 37.5% of cell (50% × 0.75 — 25% smaller than prior dots-only version).
+    // Alpha: 50% (semi-transparent so terrain stays readable).
+    const DOT_SRC = { sx: 48, sy: 136 };
+    const dotSize = Math.max(2, Math.ceil(cellSize * 0.375));
+    const dotOffset = (cellSize - dotSize) / 2;
+    const drawDot = (gx: number, gy: number) => {
+      const dx = Math.floor(gx * cellSize + dotOffset);
+      const dy = Math.floor(gy * cellSize + dotOffset);
+      ctx.drawImage(sprites.ui, DOT_SRC.sx, DOT_SRC.sy, 8, 8, dx, dy, dotSize, dotSize);
+    };
+    ctx.globalAlpha = 0.5;
     for (const entity of world.entities) {
       if (isInsideAnyHouse(entity, world)) continue;
-      if (entity.state !== 'idle' || ageInYears(entity) < CHILD_AGE) continue;
-      // Skip idle entities at home (not foraging)
-      const ePrev = prevEntityPos.current.get(entity.id) ?? entity.position;
-      const ePos = lerpPos(ePrev, entity.position, t);
-      const ex = ePos.x * cellSize + cellSize / 2;
-      const ey = ePos.y * cellSize + cellSize / 2;
-      const sense = 3 + entity.traits.perception * 2;
+      if (ageInYears(entity) < CHILD_AGE) continue;
+      if (entity.activity.kind !== 'moving') continue;
+      const target = entity.activity.target;
+      const ex = entity.position.x;
+      const ey = entity.position.y;
+      const tx = target.x;
+      const ty = target.y;
+      if (ex === tx && ey === ty) continue;
 
-      if (entity.gender === 'male') {
-        // Find nearest animal in range
-        let bestD = sense + 1;
-        let tx = -1, ty = -1;
-        for (const a of world.animals) {
-          const d = Math.abs(a.position.x - entity.position.x) + Math.abs(a.position.y - entity.position.y);
-          if (d > 0 && d <= sense && d < bestD) {
-            bestD = d;
-            tx = a.position.x * cellSize + cellSize / 2;
-            ty = a.position.y * cellSize + cellSize / 2;
-          }
-        }
-        if (tx >= 0) {
-          ctx.strokeStyle = 'rgba(139, 110, 99, 0.4)';
-          ctx.beginPath();
-          ctx.moveTo(ex, ey);
-          ctx.lineTo(tx, ty);
-          ctx.stroke();
-        }
-      } else {
-        // Find nearest fruit tree in range
-        let bestD = sense + 1;
-        let tx = -1, ty = -1;
-        for (const t of world.trees) {
-          if (!t.hasFruit || t.fruitPortions <= 0) continue;
-          const d = Math.abs(t.position.x - entity.position.x) + Math.abs(t.position.y - entity.position.y);
-          if (d > 0 && d <= sense && d < bestD) {
-            bestD = d;
-            tx = t.position.x * cellSize + cellSize / 2;
-            ty = t.position.y * cellSize + cellSize / 2;
-          }
-        }
-        if (tx >= 0) {
-          ctx.strokeStyle = 'rgba(76, 175, 80, 0.4)';
-          ctx.beginPath();
-          ctx.moveTo(ex, ey);
-          ctx.lineTo(tx, ty);
-          ctx.stroke();
-        }
+      // Manhattan L-path: horizontal first to (tx, ey), then vertical to (tx, ty).
+      // Each intermediate tile gets a dot; final target also gets a dot.
+      if (ex !== tx) {
+        const hStep = tx > ex ? 1 : -1;
+        for (let x = ex + hStep; x !== tx; x += hStep) drawDot(x, ey);
+        drawDot(tx, ey); // corner (or endpoint if same row)
+      }
+      if (ey !== ty) {
+        const vStep = ty > ey ? 1 : -1;
+        for (let y = ey + vStep; y !== ty; y += vStep) drawDot(tx, y);
+        drawDot(tx, ty); // target
       }
     }
-    ctx.setLineDash([]);
+    ctx.globalAlpha = 1.0;
 
     // Draw tile action badges
     if (tileIcons.length < 300) {

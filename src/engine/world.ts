@@ -1,21 +1,22 @@
-import type { Entity, Animal, Tree, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId, DeathCause } from './types';
+import type { Entity, Animal, Tree, House, Position, WorldState, RGB, Traits, LogEntry, Biome, Village, TribeId, DeathCause, Activity, Purpose, Action, Pace } from './types';
 import {
   MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE, TICKS_PER_YEAR,
-  PREGNANCY_DURATION, BIRTH_COOLDOWN, INFANT_MORTALITY, MATERNAL_MORTALITY, FIGHTING_DURATION, TICKS_PER_DAY, MATE_COOLDOWN,
+  PREGNANCY_DURATION, BIRTH_COOLDOWN, INFANT_MORTALITY, MATERNAL_MORTALITY, TICKS_PER_DAY,
   ENERGY_MAX, ENERGY_START, ENERGY_DRAIN_INTERVAL, ENERGY_MEAT, ENERGY_PLANT,
   HUNGER_THRESHOLD, CHILD_AGE, TRAIT_ENERGY_COST,
   ANIMAL_COUNT, scaled,
   FIGHT_MIN_AGE, MEAT_PORTIONS_PER_HUNT, TREE_FRUIT_PORTIONS,
-  ANIMAL_REPRO_INTERVAL, ANIMAL_MAX, ANIMAL_HUNT_MIN_POPULATION, ANIMAL_FLEE_RANGE, FOREST_SPEED_PENALTY,
-  WOOD_PER_CHOP, WINTER_COLD_DAMAGE, NEAR_HOME_RANGE,
-  CHOPPING_DURATION, BUILDING_DURATION, HUNT_KILL_RANGE, HOUSE_WOOD_COST, HOUSE_CAPACITY, HOUSE_SIZE,
-  ANIMAL_ENERGY_MAX, ANIMAL_ENERGY_START, ANIMAL_ENERGY_GRAZE, ANIMAL_ENERGY_DRAIN,
-  ANIMAL_DRAIN_INTERVAL, ANIMAL_REPRO_MIN_ENERGY, GRASS_GROW_CHANCE, GRASS_MAX_PER_TILE,
-  MAX_HERD_SIZE,
+  ANIMAL_REPRO_INTERVAL, FOREST_SPEED_PENALTY,
+  WOOD_PER_CHOP, NEAR_HOME_RANGE, VILLAGE_EAT_RANGE, MAX_ENTITIES_PER_TILE,
+  HUNT_KILL_RANGE, HOUSE_WOOD_COST, HOUSE_CAPACITY, HOUSE_SIZE,
+  ANIMAL_ENERGY_MAX, ANIMAL_ENERGY_START, ANIMAL_ENERGY_DRAIN,
+  ANIMAL_DRAIN_INTERVAL, ANIMAL_REPRO_MIN_ENERGY, GRASS_MAX_PER_TILE,
+  ACTION_DURATION, RUN_ENERGY_MULTIPLIER,
+  ECONOMY, RUNTIME_CONFIG,
 } from './types';
 import { generateBiomeGrid, isPassable } from './biomes';
 import type { BiomeGenParams } from './biomes';
-import { decideAction, buildAIContext, actionToGoal, shouldReEvaluate } from './utility-ai';
+import { decideAction, buildAIContext, actionToActivity, shouldReEvaluate, precomputeContext } from './utility-ai';
 import { randomName } from './names';
 
 interface CreateWorldOptions {
@@ -58,6 +59,35 @@ function isChild(e: Entity): boolean {
   return ageInYears(e) < CHILD_AGE;
 }
 
+export function isPregnant(e: Entity): boolean {
+  return e.pregnancyTimer > 0;
+}
+
+// Infant = younger than ECONOMY.reproduction.infantAgeYears. Breastfed: no drain, no eating.
+function isInfant(e: Entity): boolean {
+  return ageInYears(e) < ECONOMY.reproduction.infantAgeYears;
+}
+
+// ── Activity helpers ──
+export function isIdle(e: Entity): boolean { return e.activity.kind === 'idle'; }
+export function isMoving(e: Entity): boolean { return e.activity.kind === 'moving'; }
+export function isWorking(e: Entity): boolean { return e.activity.kind === 'working'; }
+export function getPurpose(e: Entity): Purpose | undefined {
+  return e.activity.kind === 'moving' ? e.activity.purpose : undefined;
+}
+export function getAction(e: Entity): Action | undefined {
+  return e.activity.kind === 'working' ? e.activity.action : undefined;
+}
+export function getMoveTarget(e: Entity): Position | undefined {
+  return e.activity.kind === 'moving' ? e.activity.target : undefined;
+}
+
+const IDLE: Activity = { kind: 'idle' };
+
+function startWork(action: Action): Activity {
+  return { kind: 'working', action, ticksLeft: ACTION_DURATION[action] };
+}
+
 function homePosition(e: Entity, houses: House[]): Position | undefined {
   if (!e.homeId) return undefined;
   const h = houses.find(h => h.id === e.homeId);
@@ -65,6 +95,21 @@ function homePosition(e: Entity, houses: House[]): Position | undefined {
   // Return center of house
   const off = Math.floor(HOUSE_SIZE / 2);
   return { x: h.position.x + off, y: h.position.y + off };
+}
+
+// Entity is "in village" if inside the tribal eat zone:
+// chebyshev ≤ VILLAGE_EAT_RANGE from stockpile OR from any tribe house center.
+// This is the zone where entity can eat from village stockpile without physically being at it.
+function isInVillage(pos: Position, tribe: TribeId, village: Village | undefined, houses: House[]): boolean {
+  const cheb = (a: Position, b: Position) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+  if (village?.stockpile && cheb(pos, village.stockpile) <= VILLAGE_EAT_RANGE) return true;
+  const hoff = Math.floor(HOUSE_SIZE / 2);
+  for (const h of houses) {
+    if (h.tribe !== tribe) continue;
+    const hc = { x: h.position.x + hoff, y: h.position.y + hoff };
+    if (cheb(pos, hc) <= VILLAGE_EAT_RANGE) return true;
+  }
+  return false;
 }
 
 function isAtHome(e: Entity, houses: House[]): boolean {
@@ -84,6 +129,184 @@ function randomHungerThreshold(): number {
   return HUNGER_THRESHOLD - 8 + Math.floor(Math.random() * 17); // 32..48 around baseline 40
 }
 
+// ── Goal arrival resolvers ──────────────────────────────────────────
+// One per goal.type. Each takes the entity (with goal already cleared) plus
+// whatever world state it needs to mutate, and returns the updated entity.
+// Mutations to shared arrays (animals, trees, villages) happen in-place.
+
+type LogEventFn = (e: Entity, type: LogEntry['type'], extra?: { cause?: DeathCause; detail?: string }) => void;
+type GetVillageFn = (tribe: TribeId) => Village | undefined;
+
+// Hunt arrival: if there's prey adjacent and hands are empty, enter 'hunting' work state.
+// The actual kill + carrying fires when the work finishes (see completeHunting).
+function resolveHuntArrival(entity: Entity, animals: Animal[]): Entity {
+  if (entity.carrying && entity.carrying.amount > 0) return { ...entity, activity: IDLE };
+  const hasPrey = animals.some(a => manhattan(a.position, entity.position) <= HUNT_KILL_RANGE);
+  if (!hasPrey) return { ...entity, activity: IDLE };
+  return { ...entity, activity: startWork('hunting') };
+}
+
+// Gather arrival: if there's a fruit tree on this tile, enter 'gathering' work state.
+function resolveGatherArrival(entity: Entity, trees: Tree[]): Entity {
+  const hasFruitHere = trees.some(tr =>
+    tr.hasFruit && tr.fruitPortions > 0 &&
+    tr.position.x === entity.position.x && tr.position.y === entity.position.y
+  );
+  if (!hasFruitHere) return { ...entity, activity: IDLE };
+  return { ...entity, activity: startWork('gathering') };
+}
+
+function resolveChopArrival(entity: Entity, trees: Tree[], biomes: Biome[][]): Entity {
+  const onForest = biomes[entity.position.y][entity.position.x] === 'forest';
+  const standingTreeHere = trees.some(t =>
+    !t.chopped && t.position.x === entity.position.x && t.position.y === entity.position.y
+  );
+  if (!onForest || !standingTreeHere) return { ...entity, activity: IDLE };
+  return { ...entity, activity: startWork('chopping') };
+}
+
+function resolveBuildArrival(
+  entity: Entity, biomes: Biome[][], gridSize: number,
+  houses: House[], villages: Village[], getVillage: GetVillageFn,
+): Entity {
+  const v = getVillage(entity.tribe);
+  if (!v || v.woodStore < HOUSE_WOOD_COST) return { ...entity, activity: IDLE };
+  if (!isValidBuildSite(entity.position.x, entity.position.y, biomes, gridSize, houses, villages)) return { ...entity, activity: IDLE };
+  v.woodStore -= HOUSE_WOOD_COST;
+  return { ...entity, activity: startWork('building') };
+}
+
+function resolveCookArrival(entity: Entity, getVillage: GetVillageFn): Entity {
+  const v = getVillage(entity.tribe);
+  const hasRaw = v && (v.meatStore > 0 || v.plantStore > 0);
+  if (!hasRaw) return { ...entity, activity: IDLE };
+  return { ...entity, activity: startWork('cooking') };
+}
+
+// ── Work completion handlers — fire when activity.ticksLeft hits 0 ──
+// Each returns the updated entity (activity cleared to idle) + any side effects.
+
+function completeHunting(entity: Entity, animals: Animal[], logEvent: LogEventFn): Entity {
+  if (entity.carrying && entity.carrying.amount > 0) return { ...entity, activity: IDLE };
+  const preyIdx = animals.findIndex(a => manhattan(a.position, entity.position) <= HUNT_KILL_RANGE);
+  if (preyIdx < 0) return { ...entity, activity: IDLE };
+  animals.splice(preyIdx, 1);
+  const direct = eatDirectlyToThreshold(entity, ENERGY_MEAT, MEAT_PORTIONS_PER_HUNT);
+  const updated: Entity = {
+    ...direct.entity,
+    activity: IDLE,
+    carrying: { type: 'meat' as const, amount: direct.remainingPortions },
+  };
+  logEvent(updated, 'hunt');
+  return updated;
+}
+
+function completeGathering(entity: Entity, trees: Tree[]): Entity {
+  const treeIdx = trees.findIndex(tr =>
+    tr.hasFruit && tr.fruitPortions > 0 &&
+    tr.position.x === entity.position.x && tr.position.y === entity.position.y
+  );
+  if (treeIdx < 0) return { ...entity, activity: IDLE };
+  trees[treeIdx] = {
+    ...trees[treeIdx],
+    fruitPortions: trees[treeIdx].fruitPortions - 1,
+    hasFruit: trees[treeIdx].fruitPortions > 1,
+  };
+  const direct = eatDirectlyToThreshold(entity, ENERGY_PLANT, ECONOMY.fruit.unitsPerPick);
+  const carrying = direct.remainingPortions > 0
+    ? { type: 'fruit' as const, amount: direct.remainingPortions }
+    : undefined;
+  return { ...direct.entity, activity: IDLE, carrying };
+}
+
+function completeChopping(entity: Entity, trees: Tree[], tickNum: number, logEvent: LogEventFn): Entity {
+  const treeIdx = trees.findIndex(t =>
+    !t.chopped && t.position.x === entity.position.x && t.position.y === entity.position.y
+  );
+  if (treeIdx >= 0) {
+    trees[treeIdx] = { ...trees[treeIdx], chopped: true, choppedAt: tickNum, hasFruit: false, fruitPortions: 0 };
+  }
+  logEvent(entity, 'chop', { detail: `+${WOOD_PER_CHOP} wood` });
+  return {
+    ...entity,
+    activity: IDLE,
+    energy: Math.max(0, entity.energy - 10),
+    carrying: { type: 'wood' as const, amount: WOOD_PER_CHOP },
+  };
+}
+
+function completeBuilding(
+  entity: Entity, biomes: Biome[][], gridSize: number,
+  houses: House[], villages: Village[], logEvent: LogEventFn,
+): Entity {
+  if (isValidBuildSite(entity.position.x, entity.position.y, biomes, gridSize, houses, villages)) {
+    houses.push({
+      id: generateId('h'),
+      position: { ...entity.position },
+      tribe: entity.tribe,
+      occupants: [],
+    });
+    logEvent(entity, 'build_done', { detail: 'built a house' });
+  }
+  return { ...entity, activity: IDLE, energy: Math.max(0, entity.energy - 10) };
+}
+
+function completeCooking(entity: Entity, getVillage: GetVillageFn, logEvent: LogEventFn): Entity {
+  const v = getVillage(entity.tribe);
+  if (v) {
+    const batch = ECONOMY.cooking.batchSize;
+    if (v.meatStore >= v.plantStore && v.meatStore > 0) {
+      const n = Math.min(batch, v.meatStore);
+      v.meatStore -= n;
+      v.cookedMeatStore += n;
+      logEvent(entity, 'gather', { detail: `cooked +${n} meat` });
+    } else if (v.plantStore > 0) {
+      const n = Math.min(batch, v.plantStore);
+      v.plantStore -= n;
+      v.driedFruitStore += n;
+      logEvent(entity, 'gather', { detail: `dried +${n} fruit` });
+    }
+  }
+  return { ...entity, activity: IDLE, energy: Math.max(0, entity.energy - 4) };
+}
+
+function completeTraining(entity: Entity): Entity {
+  // Random stat boost
+  const boosted = { ...entity.traits };
+  const roll = Math.random();
+  if (roll < 0.5) {
+    boosted.strength = Math.min(10, +(boosted.strength + 0.3).toFixed(1));
+  } else if (roll < 0.8) {
+    boosted.speed = Math.min(3, +(boosted.speed + 0.1).toFixed(1));
+  } else {
+    boosted.perception = Math.min(5, +(boosted.perception + 0.2).toFixed(1));
+  }
+  return {
+    ...entity,
+    activity: IDLE,
+    energy: Math.max(0, entity.energy - 5),
+    traits: boosted,
+    sparCooldown: ECONOMY.sparring.cooldownTicks,
+  };
+}
+
+function completeFighting(entity: Entity): Entity {
+  // Fight outcome (who dies) resolved at start via paired detection — here just energy cost.
+  return { ...entity, activity: IDLE, energy: Math.max(0, entity.energy - 20) };
+}
+
+// All deposits go to village stockpile (communal economy — no per-house pantries).
+function depositCarrying(entity: Entity, getVillage: GetVillageFn): Entity {
+  const carrying = entity.carrying;
+  if (!carrying || carrying.amount <= 0) return entity;
+  const v = getVillage(entity.tribe);
+  if (!v) return entity;
+  if (carrying.type === 'meat') v.meatStore += carrying.amount;
+  else if (carrying.type === 'fruit') v.plantStore += carrying.amount;
+  else if (carrying.type === 'wood') v.woodStore += carrying.amount;
+  return { ...entity, carrying: undefined };
+}
+
 function eatDirectlyToThreshold(entity: Entity, portionEnergy: number, availablePortions: number): { entity: Entity; remainingPortions: number } {
   let remaining = availablePortions;
   let energy = entity.energy;
@@ -94,13 +317,6 @@ function eatDirectlyToThreshold(entity: Entity, portionEnergy: number, available
   }
   if (energy === entity.energy) return { entity, remainingPortions: remaining };
   return { entity: { ...entity, energy }, remainingPortions: remaining };
-}
-
-
-
-
-export function canHuntAnimalPopulation(animals: Animal[], gridSize: number): boolean {
-  return animals.length > scaled(ANIMAL_HUNT_MIN_POPULATION, gridSize, 2);
 }
 
 function randomTraits(): Traits {
@@ -187,33 +403,46 @@ function manhattan(a: Position, b: Position): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-function stepToward(from: Position, to: Position, biomes: Biome[][], gridSize: number, houseTiles?: Set<string>): Position {
-  const candidates: Position[] = [
-    { x: from.x + 1, y: from.y },
-    { x: from.x - 1, y: from.y },
-    { x: from.x, y: from.y + 1 },
-    { x: from.x, y: from.y - 1 },
-  ];
-  let bestPos = from;
-  let bestDist = manhattan(from, to);
-  for (const c of candidates) {
-    if (!isValidMove(c, biomes, gridSize, houseTiles)) continue;
-    const d = manhattan(c, to);
-    if (d < bestDist) {
-      bestDist = d;
-      bestPos = c;
+// BFS pathfinding — finds shortest path around obstacles (houses, water, mountains, occupied tiles).
+// Returns the FIRST step on the shortest path from `from` to `to`.
+// Target tile itself may be impassable (e.g. stockpile tile for deposit) — reachable
+// as destination but won't be expanded through.
+// `moveGrid` (optional) makes BFS route AROUND tiles already occupied by other entities.
+const BFS_BUDGET = 400;
+function stepToward(
+  from: Position, to: Position,
+  biomes: Biome[][], gridSize: number,
+  blockedTiles?: Set<string>,
+  moveGrid?: number[][],
+): Position {
+  if (from.x === to.x && from.y === to.y) return from;
+  const queue: Array<{ pos: Position; firstStep: Position | null }> = [{ pos: from, firstStep: null }];
+  const visited = new Set<string>();
+  visited.add(`${from.x},${from.y}`);
+  let iters = 0;
+  while (queue.length && iters < BFS_BUDGET) {
+    iters++;
+    const { pos, firstStep } = queue.shift()!;
+    if (pos.x === to.x && pos.y === to.y) return firstStep ?? pos;
+    const dirs: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of dirs) {
+      const nx = pos.x + dx;
+      const ny = pos.y + dy;
+      const key = `${nx},${ny}`;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const candidate = { x: nx, y: ny };
+      const isTarget = nx === to.x && ny === to.y;
+      if (!isTarget) {
+        if (!isValidMove(candidate, biomes, gridSize, blockedTiles)) continue;
+        // Skip occupied tiles — entities path around each other (no stacking).
+        if (moveGrid && moveGrid[ny][nx] >= MAX_ENTITIES_PER_TILE) continue;
+      }
+      queue.push({ pos: candidate, firstStep: firstStep ?? candidate });
     }
   }
-  if (bestPos === from) {
-    for (let i = candidates.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-    }
-    for (const c of candidates) {
-      if (isValidMove(c, biomes, gridSize, houseTiles)) return c;
-    }
-  }
-  return bestPos;
+  // No path within budget — entity stays put. Caller handles via "can't move" branch.
+  return from;
 }
 
 function randomPos(gridSize: number): Position {
@@ -234,7 +463,7 @@ function isNearTribeHouses(pos: Position, tribe: TribeId, houses: House[]): bool
 
 
 /** Check if a house can be placed at (x,y) as top-left corner */
-export function isValid3x3BuildSite(
+export function isValidBuildSite(
   x: number, y: number,
   biomes: Biome[][], gridSize: number,
   houses: House[], villages: Village[],
@@ -276,10 +505,10 @@ function randomPassablePos(biomes: Biome[][], gridSize: number): Position {
   return randomPos(gridSize); // fallback
 }
 
-function isValidMove(pos: Position, biomes: Biome[][], gridSize: number, houseTiles?: Set<string>): boolean {
+function isValidMove(pos: Position, biomes: Biome[][], gridSize: number, blockedTiles?: Set<string>): boolean {
   if (pos.x < 0 || pos.x >= gridSize || pos.y < 0 || pos.y >= gridSize) return false;
   if (!isPassable(biomes[pos.y][pos.x])) return false;
-  if (houseTiles && houseTiles.has(`${pos.x},${pos.y}`)) return false;
+  if (blockedTiles && blockedTiles.has(`${pos.x},${pos.y}`)) return false;
   return true;
 }
 
@@ -293,7 +522,7 @@ function buildHouseTileSet(houses: House[]): Set<string> {
   return s;
 }
 
-function randomStepBiome(position: Position, gridSize: number, biomes: Biome[][], houseTiles?: Set<string>): Position {
+function randomStepBiome(position: Position, gridSize: number, biomes: Biome[][], blockedTiles?: Set<string>): Position {
   const dirs: Position[] = [
     { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 },
   ];
@@ -303,7 +532,7 @@ function randomStepBiome(position: Position, gridSize: number, biomes: Biome[][]
   }
   for (const d of dirs) {
     const np = { x: position.x + d.x, y: position.y + d.y };
-    if (isValidMove(np, biomes, gridSize, houseTiles)) return np;
+    if (isValidMove(np, biomes, gridSize, blockedTiles)) return np;
   }
   return position;
 }
@@ -367,6 +596,8 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     stockpile: { ...sp },
     meatStore: scaled(10, gridSize, 5),
     plantStore: scaled(15, gridSize, 8),
+    cookedMeatStore: 0,
+    driedFruitStore: 0,
     woodStore: scaled(10, gridSize, 5),
   }));
 
@@ -407,9 +638,8 @@ export function createWorld(options: CreateWorldOptions): WorldState {
         name: randomName(gender),
         position: pos,
         gender,
-        state: 'idle',
-        stateTimer: 0,
-        age: (MIN_REPRODUCTIVE_AGE + Math.floor(Math.random() * 10)) * TICKS_PER_YEAR, // 18-27 years
+        activity: IDLE,
+        age: (MIN_REPRODUCTIVE_AGE + Math.floor(Math.random() * 10)) * TICKS_PER_YEAR,
         maxAge: randomMaxAge(traits.fertility),
         color: [
           50 + Math.floor(Math.random() * 206),
@@ -418,13 +648,10 @@ export function createWorld(options: CreateWorldOptions): WorldState {
         ] as RGB,
         energy: ENERGY_START,
         traits,
-        meat: 0,
         hungerThreshold: randomHungerThreshold(),
         tribe,
         birthCooldown: 0,
-        mateCooldown: 0,
-        coldExposure: false,
-        goalSetTick: 0,
+        pregnancyTimer: 0, sparCooldown: 0,
       });
     }
   }
@@ -444,48 +671,28 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     )
   );
 
-  // Create animals in 2 initial herds, placed far apart
+  // Single herd — all animals belong to one group, clustered around a spawn point.
   const animalCount = scaled(ANIMAL_COUNT, gridSize, 4);
-  const herdsCount = 2;
-
-  // Find 2 herd spawn points far apart
-  const herdSpawns: Position[] = [];
-  for (let h = 0; h < herdsCount; h++) {
-    for (let attempt = 0; attempt < 200; attempt++) {
-      const pos = randomPassablePos(biomes, gridSize);
-      if (biomes[pos.y][pos.x] === 'water') continue;
-      const farEnough = herdSpawns.every(s => manhattan(s, pos) > gridSize * 0.5);
-      if (farEnough || attempt > 150) { herdSpawns.push(pos); break; }
-    }
-  }
-  if (herdSpawns.length < herdsCount) {
-    while (herdSpawns.length < herdsCount) herdSpawns.push(randomPassablePos(biomes, gridSize));
-  }
-
-  const alphaIds: string[] = [];
-  for (let h = 0; h < herdsCount; h++) alphaIds.push(generateId('a'));
+  const herdSpawn = randomPassablePos(biomes, gridSize);
 
   const animals: Animal[] = [];
   for (let i = 0; i < animalCount; i++) {
-    const herdIdx = i % herdsCount;
-    const isAlpha = i < herdsCount;
-    const id = isAlpha ? alphaIds[herdIdx] : generateId('a');
-    // Spawn near herd center (within 3 tiles)
-    const spawn = herdSpawns[herdIdx];
-    let pos = spawn;
+    let pos = herdSpawn;
     for (let a = 0; a < 20; a++) {
-      const candidate = { x: spawn.x + Math.floor(Math.random() * 7) - 3, y: spawn.y + Math.floor(Math.random() * 7) - 3 };
+      const candidate = {
+        x: herdSpawn.x + Math.floor(Math.random() * 7) - 3,
+        y: herdSpawn.y + Math.floor(Math.random() * 7) - 3,
+      };
       if (candidate.x >= 0 && candidate.x < gridSize && candidate.y >= 0 && candidate.y < gridSize
           && isPassable(biomes[candidate.y][candidate.x])) { pos = candidate; break; }
     }
     animals.push({
-      id,
+      id: generateId('a'),
       position: pos,
       gender: i < animalCount / 2 ? 'male' : 'female',
       energy: ANIMAL_ENERGY_START,
       reproTimer: Math.floor(Math.random() * ANIMAL_REPRO_INTERVAL),
       panicTicks: 0,
-      herdAlpha: alphaIds[herdIdx],
     });
   }
 
@@ -510,12 +717,11 @@ export function createWorld(options: CreateWorldOptions): WorldState {
   return { entities, animals, trees, houses: [], biomes, villages, grass, tick: 0, gridSize, log: [] };
 }
 
-// --- Interaction detection (fighting/training only — mating removed) ---
-
+// Fighting & training detection — adult males who are idle and adjacent.
+// Cross-tribe aggressive pair → fighting. Same-tribe pair near village → training.
 function detectInteractions(
   entities: Entity[],
   _gridSize: number,
-  skipIds: Set<string>,
   _villages: Village[],
   houses: House[] = [],
   log?: LogEntry[],
@@ -523,46 +729,43 @@ function detectInteractions(
 ): Entity[] {
   const newActionIds = new Set<string>();
 
-  // Find idle adult males not at home
   const activeMales = entities.filter(e =>
-    e.gender === 'male' && e.state === 'idle' && !skipIds.has(e.id)
+    e.gender === 'male' && isIdle(e)
     && ageInYears(e) >= FIGHT_MIN_AGE && !isAtHome(e, houses)
   );
 
-  // Check pairs within manhattan distance 1 (adjacent or same tile)
   let fightStarted = false;
-    for (let i = 0; i < activeMales.length - 1 && !fightStarted; i++) {
-      for (let j = i + 1; j < activeMales.length && !fightStarted; j++) {
-        const m1 = activeMales[i];
-        const m2 = activeMales[j];
-        if (manhattan(m1.position, m2.position) > 1) continue;
-        if (m1.tribe !== m2.tribe) {
-          if (Math.random() < m1.traits.aggression / 10 && Math.random() < m2.traits.aggression / 10) {
-            newActionIds.add(m1.id);
-            newActionIds.add(m2.id);
-            fightStarted = true;
-          }
+  for (let i = 0; i < activeMales.length - 1 && !fightStarted; i++) {
+    for (let j = i + 1; j < activeMales.length && !fightStarted; j++) {
+      const m1 = activeMales[i];
+      const m2 = activeMales[j];
+      if (manhattan(m1.position, m2.position) > 1) continue;
+      if (m1.tribe !== m2.tribe) {
+        if (Math.random() < m1.traits.aggression / 10 && Math.random() < m2.traits.aggression / 10) {
+          newActionIds.add(m1.id);
+          newActionIds.add(m2.id);
+          fightStarted = true;
         }
       }
     }
+  }
 
-    // Same-tribe training — adjacent males near settlement
-    if (!fightStarted) {
-      const trulyIdle = activeMales.filter(e =>
-        !newActionIds.has(e.id) && isNearTribeHouses(e.position, e.tribe, houses)
-      );
-      for (let i = 0; i < trulyIdle.length - 1; i++) {
-        for (let j = i + 1; j < trulyIdle.length; j++) {
-          if (trulyIdle[i].tribe === trulyIdle[j].tribe
-            && manhattan(trulyIdle[i].position, trulyIdle[j].position) <= 1) {
-            newActionIds.add(trulyIdle[i].id);
-            newActionIds.add(trulyIdle[j].id);
-            break;
-          }
+  if (!fightStarted) {
+    const trulyIdle = activeMales.filter(e =>
+      !newActionIds.has(e.id) && isNearTribeHouses(e.position, e.tribe, houses)
+    );
+    for (let i = 0; i < trulyIdle.length - 1; i++) {
+      for (let j = i + 1; j < trulyIdle.length; j++) {
+        if (trulyIdle[i].tribe === trulyIdle[j].tribe
+          && manhattan(trulyIdle[i].position, trulyIdle[j].position) <= 1) {
+          newActionIds.add(trulyIdle[i].id);
+          newActionIds.add(trulyIdle[j].id);
+          break;
         }
-        if (newActionIds.size > 0) break;
       }
+      if (newActionIds.size > 0) break;
     }
+  }
 
   const loggedPairs = new Set<string>();
   return entities.map(e => {
@@ -572,24 +775,20 @@ function detectInteractions(
       && manhattan(e.position, o.position) <= 1
     );
     if (e.gender === 'male' && otherMale) {
-      if (otherMale.tribe === e.tribe) {
-        if (log && tickNum != null) {
-          const pairKey = [e.id, otherMale.id].sort().join(':');
-          if (!loggedPairs.has(pairKey)) {
-            loggedPairs.add(pairKey);
-            log.push({ tick: tickNum, type: 'train', entityId: e.id, name: e.name, gender: e.gender, age: e.age, detail: `with ${otherMale.name}` });
-          }
-        }
-        return { ...e, state: 'training' as const, stateTimer: 3, goal: undefined };
-      }
+      const isFight = otherMale.tribe !== e.tribe;
       if (log && tickNum != null) {
         const pairKey = [e.id, otherMale.id].sort().join(':');
         if (!loggedPairs.has(pairKey)) {
           loggedPairs.add(pairKey);
-          log.push({ tick: tickNum, type: 'fight', entityId: e.id, name: e.name, gender: e.gender, age: e.age, detail: `vs ${otherMale.name}` });
+          log.push({
+            tick: tickNum,
+            type: isFight ? 'fight' : 'train',
+            entityId: e.id, name: e.name, gender: e.gender, age: e.age,
+            detail: isFight ? `vs ${otherMale.name}` : `with ${otherMale.name}`,
+          });
         }
       }
-      return { ...e, state: 'fighting' as const, stateTimer: FIGHTING_DURATION, goal: undefined };
+      return { ...e, activity: startWork(isFight ? 'fighting' : 'training') };
     }
     return e;
   });
@@ -601,10 +800,9 @@ function pheromoneMating(entities: Entity[], villages: Village[], _houses: House
   const updated = [...entities];
   const matedMaleIds = new Set<string>();
 
-  // Males near stockpile/houses can mate with nearby fertile females
   const males = updated.filter(e =>
     e.gender === 'male' && !isChild(e) && isReproductive(e)
-    && e.mateCooldown === 0 && e.state !== 'fighting'
+    && getAction(e) !== 'fighting'
   );
 
   for (const male of males) {
@@ -622,43 +820,29 @@ function pheromoneMating(entities: Entity[], villages: Village[], _houses: House
       const female = updated[fi];
       if (female.gender !== 'female' || isChild(female)) continue;
       if (!isReproductive(female)) continue;
-      if (female.state === 'pregnant') continue;
+      if (isPregnant(female)) continue;
       if (female.birthCooldown > 0) continue;
       if (female.tribe !== male.tribe) continue;
       if (!female.homeId) continue;
-
-      // Food check
-      const village = villages.find(v => v.tribe === female.tribe);
-      if (village) {
-        const tribePop = entities.filter(e => e.tribe === female.tribe).length;
-        const tribeHouses = _houses.filter(h => h.tribe === female.tribe);
-        const totalFood = village.meatStore + village.plantStore
-          + tribeHouses.reduce((s, h) => s + h.inventory.meat + h.inventory.fruit, 0);
-        if (totalFood < tribePop * 2) continue;
-      }
+      // Must be well-fed — pregnancy requires energy reserves (realistic body-fat gate)
+      if (female.energy < ECONOMY.reproduction.pregnancyMinEnergy) continue;
 
       const dist = manhattan(male.position, female.position);
       if (dist > range) continue;
 
-      // Mating chance based on male strength
       const matingChance = male.traits.strength / 20;
       if (Math.random() >= matingChance) continue;
 
-      // Impregnate!
+      // Pregnancy runs in parallel with activity — woman keeps doing whatever she was doing.
       const pregTime = Math.max(3, Math.round(PREGNANCY_DURATION / female.traits.fertility));
       updated[fi] = {
         ...female,
-        state: 'pregnant' as const,
-        stateTimer: pregTime,
+        pregnancyTimer: pregTime,
         fatherTraits: male.traits,
         fatherTribe: male.tribe,
-        goal: undefined,
       };
       log.push({ tick: tickNum, type: 'pregnant', entityId: female.id, name: female.name, gender: female.gender, age: female.age, detail: `father: ${male.name}` });
 
-      // Male gets cooldown
-      const mi = updated.findIndex(e => e.id === male.id);
-      if (mi >= 0) updated[mi] = { ...updated[mi], mateCooldown: MATE_COOLDOWN };
       matedMaleIds.add(male.id);
       break; // one female per male per tick
     }
@@ -666,15 +850,45 @@ function pheromoneMating(entities: Entity[], villages: Village[], _houses: House
   return updated;
 }
 
+// Builds a "why did this starvation happen" diagnostic string for the death log.
+// Reports village stockpile + projected days of food the tribe had at moment of death.
+// Useful for telling "starved because no food" apart from "starved WITH food available".
+function starvationContext(dead: Entity, allEntities: Entity[], villages: Village[]): string {
+  const v = villages.find(vv => vv.tribe === dead.tribe);
+  if (!v) return 'no village';
+  const raw = v.meatStore + v.plantStore;
+  const cooked = v.cookedMeatStore + v.driedFruitStore;
+  let adults = 0, toddlers = 0;
+  for (const e of allEntities) {
+    if (e.tribe !== v.tribe) continue;
+    const years = Math.floor(e.age / TICKS_PER_YEAR);
+    if (years >= CHILD_AGE) adults++;
+    else if (years >= ECONOMY.reproduction.infantAgeYears) toddlers++;
+  }
+  const energyPerDay = adults * 2 + toddlers * 2 * ECONOMY.reproduction.childDrainMultiplier;
+  const stockpileEnergy =
+      v.meatStore       * ECONOMY.meat.energyPerUnit
+    + v.cookedMeatStore * ECONOMY.cooking.cookedMeatEnergyPerUnit
+    + v.plantStore      * ECONOMY.fruit.energyPerUnit
+    + v.driedFruitStore * ECONOMY.cooking.driedFruitEnergyPerUnit;
+  const days = energyPerDay > 0 ? Math.floor(stockpileEnergy / energyPerDay) : Infinity;
+  const daysLabel = !isFinite(days) ? '∞' : String(days);
+  return `food=${raw}raw+${cooked}cooked (${daysLabel}d)`;
+}
+
 // --- Main tick ---
 
 export function tick(state: WorldState): WorldState {
   const { gridSize } = state;
-  const animalMax = scaled(ANIMAL_MAX, gridSize, 4);
-  const biomes = state.biomes.map(row => [...row]);
-  let trees = state.trees.map(t => ({ ...t, position: { ...t.position } }));
+  // biomes is immutable inside tick() — share the reference, no deep-copy.
+  // trees: shallow array copy (elements replaced by reference, not mutated in place).
+  // grass: deep copy — mutated each tick (animals graze, regrowth).
+  const biomes = state.biomes;
+  let trees = [...state.trees];
   const grass = state.grass.map(row => [...row]);
-  const houseTiles = buildHouseTileSet(state.houses);
+  // blockedTiles = static structures that block movement (houses + stockpiles).
+  // Entities path AROUND these and stand adjacent (deposit / cook arrival check).
+  const blockedTiles = buildHouseTileSet(state.houses);
   const tickNum = state.tick + 1;
   const updatedVillages = state.villages.map(v => ({ ...v, color: [...v.color] as RGB }));
   function getVillage(tribe: TribeId) {
@@ -684,26 +898,45 @@ export function tick(state: WorldState): WorldState {
     log.push({ tick: tickNum, type, entityId: e.id, name: e.name, gender: e.gender, age: e.age, ...extra });
   }
   let animals = state.animals.map(a => ({ ...a, position: { ...a.position } }));
-  let houses = state.houses.map(h => ({ ...h, position: { ...h.position }, occupants: [...h.occupants], inventory: { ...h.inventory } }));
+  let houses = state.houses.map(h => ({ ...h, position: { ...h.position }, occupants: [...h.occupants] }));
   const stockpileTiles = new Set(
     updatedVillages
       .filter(v => v.stockpile)
       .map(v => `${v.stockpile!.x},${v.stockpile!.y}`),
   );
   houses = houses.filter(h => !stockpileTiles.has(`${h.position.x},${h.position.y}`));
+  for (const t of stockpileTiles) blockedTiles.add(t);
   const log: LogEntry[] = [];
+
+  // Season — computed up front so aging/drain can apply winter penalty for homeless.
+  const ticksPerMonthGlobal = TICKS_PER_DAY * 10;
+  const currentMonth = Math.floor((tickNum % TICKS_PER_YEAR) / ticksPerMonthGlobal);
+  const currentSeason = Math.floor(currentMonth / 3);
+  const isWinter = currentSeason === 3;
 
   // --- Step 0: Age, energy drain, eat meat if hungry, remove dead ---
   const aged: Entity[] = state.entities.map(e => {
-    const a = { ...e, age: e.age + 1, birthCooldown: Math.max(0, e.birthCooldown - 1), mateCooldown: Math.max(0, e.mateCooldown - 1) };
-    if (!isChild(a) && a.age % ENERGY_DRAIN_INTERVAL === 0) {
+    const a = {
+      ...e,
+      age: e.age + 1,
+      birthCooldown: Math.max(0, e.birthCooldown - 1),
+      pregnancyTimer: Math.max(0, e.pregnancyTimer - 1),
+      sparCooldown: Math.max(0, e.sparCooldown - 1),
+    };
+    // Metabolism:
+    //   infants (< infantAgeYears): breastfed — no drain, no eating
+    //   toddlers (infantAge..CHILD_AGE): partial drain (childDrainMultiplier), can eat
+    //   adults (CHILD_AGE+): full drain, full eating
+    //   homeless in winter: 2× drain (cold exposure — incentive to build houses in time)
+    if (!isInfant(a) && a.age % ENERGY_DRAIN_INTERVAL === 0) {
       const baseDrain = 1 + traitEnergyDrain(a.traits);
-      // Hungry entities move less → half energy drain
-      const drain = isHungry(a) ? baseDrain * 0.5 : baseDrain;
-      a.energy = Math.max(0, a.energy - drain);
+      const hungerMod = isHungry(a) ? 0.5 : 1.0;
+      const ageMod = isChild(a) ? ECONOMY.reproduction.childDrainMultiplier : 1.0;
+      const winterMod = (isWinter && !a.homeId) ? 2.0 : 1.0;
+      a.energy = Math.max(0, a.energy - baseDrain * hungerMod * ageMod * winterMod);
     }
-    // Hungry → eat from carrying first, then home, then stockpile
-    if (isHungry(a) && !isChild(a)) {
+    // Hungry → eat from carrying first, then stockpile. Infants don't eat external food.
+    if (isHungry(a) && !isInfant(a)) {
       let fed = false;
       // Eat from what you're carrying
       if (a.carrying && a.carrying.amount > 0) {
@@ -715,24 +948,19 @@ export function tick(state: WorldState): WorldState {
           fed = true;
         }
       }
-      const myHome = a.homeId ? houses.find(h => h.id === a.homeId) : undefined;
-      // Try home inventory
-      if (myHome) {
-        if (myHome.inventory.meat > 0) {
-          myHome.inventory.meat -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT); fed = true;
-        } else if (myHome.inventory.fruit > 0) {
-          myHome.inventory.fruit -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_PLANT); fed = true;
-        }
-      }
-      // Fallback: village stockpile
+      // Eat from village stockpile if in village zone. Prefer cooked (higher energy) over raw.
       if (!fed) {
         const myV = getVillage(a.tribe);
-        if (myV && myV.meatStore > 0) {
-          myV.meatStore -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT);
-        } else if (myV && myV.plantStore > 0) {
-          myV.plantStore -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_PLANT);
-        } else if (a.meat > 0) {
-          a.meat -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT);
+        if (myV && isInVillage(a.position, a.tribe, myV, houses)) {
+          if (myV.cookedMeatStore > 0) {
+            myV.cookedMeatStore -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ECONOMY.cooking.cookedMeatEnergyPerUnit); fed = true;
+          } else if (myV.driedFruitStore > 0) {
+            myV.driedFruitStore -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ECONOMY.cooking.driedFruitEnergyPerUnit); fed = true;
+          } else if (myV.meatStore > 0) {
+            myV.meatStore -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_MEAT); fed = true;
+          } else if (myV.plantStore > 0) {
+            myV.plantStore -= 1; a.energy = Math.min(ENERGY_MAX, a.energy + ENERGY_PLANT); fed = true;
+          }
         }
       }
     }
@@ -749,15 +977,78 @@ export function tick(state: WorldState): WorldState {
         if (idx >= 0) h.occupants.splice(idx, 1);
       }
     } else if (e.energy <= 0) {
-      logEvent(e, 'death', { cause: e.coldExposure ? 'cold' : 'starvation' });
+      logEvent(e, 'death', { cause: 'starvation', detail: starvationContext(e, state.entities, updatedVillages) });
       for (const h of houses) {
         const idx = h.occupants.indexOf(e.id);
         if (idx >= 0) h.occupants.splice(idx, 1);
       }
     } else {
-      entities.push({ ...e, coldExposure: false });
+      entities.push(e);
     }
   }
+
+  // --- Step 0c: Births — pregnancyTimer just hit 0 for these mothers ---
+  const earlyBabies: Entity[] = [];
+  const earlyDeadIds = new Set<string>();
+  for (let mi = 0; mi < entities.length; mi++) {
+    const mother = entities[mi];
+    const wasPregnant = (state.entities.find(o => o.id === mother.id)?.pregnancyTimer ?? 0) > 0;
+    const stillPregnant = mother.pregnancyTimer > 0;
+    if (!wasPregnant || stillPregnant) continue;
+
+    // Birth happens — mother keeps her current state/goal; new baby spawns at her home.
+    const dadTraits = mother.fatherTraits ?? mother.traits;
+    const tc = mother.traits.twinChance;
+    let babyCount = 1;
+    if (Math.random() < tc) {
+      const roll = Math.random();
+      if (roll < 0.7) babyCount = 2;
+      else if (roll < 0.92) babyCount = 3;
+      else babyCount = 4;
+    }
+    const birthHome = homePosition(mother, houses);
+    const birthPos = birthHome ? { ...birthHome } : { ...mother.position };
+    for (let b = 0; b < babyCount; b++) {
+      const babyTraits = inheritTraits(dadTraits, mother.traits);
+      const babyGender = Math.random() < 0.5 ? 'male' : 'female' as const;
+      const baby: Entity = {
+        id: generateId('e'),
+        name: randomName(babyGender),
+        position: { ...birthPos },
+        gender: babyGender,
+        activity: IDLE,
+        age: 0,
+        maxAge: randomMaxAge(babyTraits.fertility),
+        color: [...mother.color] as RGB,
+        energy: ENERGY_START,
+        traits: babyTraits,
+        hungerThreshold: randomHungerThreshold(),
+        birthCooldown: 0,
+        pregnancyTimer: 0, sparCooldown: 0,
+        tribe: (mother.fatherTribe === mother.tribe ? mother.tribe : (Math.random() < 0.5 ? mother.tribe : mother.fatherTribe!)) as TribeId,
+        homeId: birthHome ? mother.homeId : undefined,
+        motherId: mother.id,
+      };
+      if (Math.random() < INFANT_MORTALITY) {
+        logEvent(baby, 'death', { cause: 'starvation', detail: 'infant mortality' });
+      } else {
+        earlyBabies.push(baby);
+        logEvent(baby, 'birth');
+      }
+    }
+    // Reset reproductive state on mother (fatherTraits cleared, birthCooldown applied)
+    entities[mi] = { ...mother, fatherTraits: undefined, birthCooldown: BIRTH_COOLDOWN };
+    // Maternal mortality
+    if (Math.random() < MATERNAL_MORTALITY) {
+      earlyDeadIds.add(mother.id);
+      logEvent(mother, 'death', { cause: 'childbirth' });
+      for (const h of houses) {
+        const idx = h.occupants.indexOf(mother.id);
+        if (idx >= 0) h.occupants.splice(idx, 1);
+      }
+    }
+  }
+  entities = entities.filter(e => !earlyDeadIds.has(e.id)).concat(earlyBabies);
 
   // --- Step 0b: Validate homeId — remove if entity not in house's occupants ---
   for (let i = 0; i < entities.length; i++) {
@@ -770,252 +1061,74 @@ export function tick(state: WorldState): WorldState {
   }
 
   // --- Step 1: Resolve completed actions ---
-  const grid = createOccupancyGrid(gridSize, entities, houses);
   const babies: Entity[] = [];
-  const resolvedIds = new Set<string>();
   const deadIds = new Set<string>();
-  const consumedAnimalIds = new Set<string>();
 
-  const busyByTile = new Map<number, Entity[]>();
-  for (const e of entities) {
-    if (e.state !== 'idle') {
+  // Resolve working activities. For each entity with activity.kind='working':
+  //   1. ticksLeft--. If still >0 → entity keeps working next tick.
+  //   2. If ticksLeft hit 0 → fire the matching completion handler (kill animal, chop tree,
+  //      place house, cook food, combat outcome, etc.). Entity returns to idle with carrying/etc.
+  // Fighting is paired: when two fighters finish on the same tile, the stronger one
+  // survives the final cost-reduction; loser may die if -40 dropped energy to 0.
+  entities = entities.map(e => {
+    if (e.activity.kind !== 'working') return e;
+    const nextTicks = e.activity.ticksLeft - 1;
+    if (nextTicks > 0) {
+      return { ...e, activity: { ...e.activity, ticksLeft: nextTicks } };
+    }
+    // ticksLeft hit 0 — apply completion
+    switch (e.activity.action) {
+      case 'chopping':  return completeChopping(e, trees, tickNum, logEvent);
+      case 'building':  return completeBuilding(e, biomes, gridSize, houses, updatedVillages, logEvent);
+      case 'cooking':   return completeCooking(e, getVillage, logEvent);
+      case 'hunting':   return completeHunting(e, animals, logEvent);
+      case 'gathering': return completeGathering(e, trees);
+      case 'training':  return completeTraining(e);
+      case 'fighting':  return completeFighting(e);
+    }
+  });
+
+  // Fighting death resolution: pair fighters on the same tile, weighted by strength.
+  // Loser who's still standing after completeFighting's -20 gets another -20 if they lost.
+  // Simple: if two idle ex-fighters on same tile with energy near 0, weakest one dies.
+  {
+    const exFightersByTile = new Map<number, Entity[]>();
+    for (const e of entities) {
+      // ex-fighters are idle now (just returned from fighting), energy hit -20
+      if (e.activity.kind !== 'idle') continue;
+      const wasFighting = state.entities.find(s => s.id === e.id);
+      if (!wasFighting || getAction(wasFighting) !== 'fighting') continue;
+      if (wasFighting.activity.kind === 'working' && wasFighting.activity.ticksLeft > 1) continue;
       const key = e.position.y * gridSize + e.position.x;
-      const group = busyByTile.get(key) ?? [];
+      const group = exFightersByTile.get(key) ?? [];
       group.push(e);
-      busyByTile.set(key, group);
+      exFightersByTile.set(key, group);
     }
-  }
-
-  for (const [, group] of busyByTile) {
-    const finishing = group.filter(e => e.stateTimer === 1);
-    if (finishing.length === 0) continue;
-
-    const action = finishing[0].state;
-
-    if (action === 'pregnant') {
-      // Pregnancy complete → give birth
-      for (const mother of finishing) {
-        resolvedIds.add(mother.id);
-
-        const dadTraits = mother.fatherTraits ?? mother.traits;
-        const tc = mother.traits.twinChance;
-        let babyCount = 1;
-        if (Math.random() < tc) {
-          const roll = Math.random();
-          if (roll < 0.7) babyCount = 2;
-          else if (roll < 0.92) babyCount = 3;
-          else babyCount = 4;
-        }
-
-        const birthHome = homePosition(mother, houses);
-        const birthPos = birthHome ? { ...birthHome } : { ...mother.position };
-
-        for (let b = 0; b < babyCount; b++) {
-          const babyTraits = inheritTraits(dadTraits, mother.traits);
-          const babyGender = Math.random() < 0.5 ? 'male' : 'female' as const;
-          const baby: Entity = {
-            id: generateId('e'),
-            name: randomName(babyGender),
-            position: { ...birthPos },
-            gender: babyGender,
-            state: 'idle',
-            stateTimer: 0,
-            age: 0,
-            maxAge: randomMaxAge(babyTraits.fertility),
-            color: [...mother.color] as RGB,
-            energy: ENERGY_START,
-            traits: babyTraits,
-            meat: 0,
-            hungerThreshold: randomHungerThreshold(),
-            birthCooldown: 0,
-            mateCooldown: 0,
-            tribe: (mother.fatherTribe === mother.tribe ? mother.tribe : (Math.random() < 0.5 ? mother.tribe : mother.fatherTribe!)) as TribeId,
-            homeId: birthHome ? mother.homeId : undefined,
-            coldExposure: false,
-            goalSetTick: 0,
-          };
-
-          // Infant mortality — historical ~30% death rate at birth
-          if (Math.random() < INFANT_MORTALITY) {
-            logEvent(baby, 'death', { cause: 'starvation', detail: 'infant mortality' });
-          } else {
-            babies.push(baby);
-            logEvent(baby, 'birth');
-            grid[birthPos.y][birthPos.x]++;
-          }
-        }
-
-        // Maternal mortality
-        if (Math.random() < MATERNAL_MORTALITY) {
-          deadIds.add(mother.id);
-          logEvent(mother, 'death', { cause: 'childbirth' });
-        }
-      }
-    } else if (action === 'training') {
-      // Sparring complete → both get small stat boost
-      for (const trainee of finishing) {
-        resolvedIds.add(trainee.id);
-      }
-    } else if (action === 'fighting') {
-      // Strength-weighted fight: loser takes damage, dies only if energy drops to 0
-      const [a, b] = finishing;
-      if (a && b) {
-        const winner = fightWinner(a, b);
-        const loserId = winner.id === a.id ? b.id : a.id;
-        const loserEntity = winner.id === a.id ? b : a;
-        const loserEnergy = loserEntity.energy - 40;
-        if (loserEnergy <= 0) {
-          deadIds.add(loserId);
-          logEvent(loserEntity, 'death', { cause: 'fight', detail: `killed by ${winner.name}` });
-        }
-        // Loser energy reduction handled in apply step below
-        resolvedIds.add(winner.id);
-        resolvedIds.add(loserId);
-      }
-    } else if (action === 'chopping') {
-      for (const chopper of finishing) {
-        resolvedIds.add(chopper.id);
-        // Carry wood home instead of teleporting
-        const ci = entities.findIndex(e => e.id === chopper.id);
-        if (ci >= 0) entities[ci] = { ...entities[ci], carrying: { type: 'wood', amount: WOOD_PER_CHOP } };
-        // Mark tree as chopped (stump)
-        const treeIdx = trees.findIndex(t =>
-          !t.chopped && t.position.x === chopper.position.x && t.position.y === chopper.position.y
-        );
-        if (treeIdx >= 0) {
-          trees[treeIdx] = { ...trees[treeIdx], chopped: true, choppedAt: tickNum, hasFruit: false, fruitPortions: 0 };
-        }
-        logEvent(chopper, 'chop', { detail: `+${WOOD_PER_CHOP} wood` });
-      }
-    } else if (action === 'building') {
-      for (const builder of finishing) {
-        resolvedIds.add(builder.id);
-        // builder.position is top-left corner of 3×3 house
-        if (!isValid3x3BuildSite(builder.position.x, builder.position.y, biomes, gridSize, houses, updatedVillages)) continue;
-        const newHouse: House = {
-          id: generateId('h'),
-          position: { ...builder.position },
-          tribe: builder.tribe,
-          occupants: [],
-          inventory: { meat: 0, wood: 0, fruit: 0 },
-        };
-        houses.push(newHouse);
-        logEvent(builder, 'build_done', { detail: 'built a house' });
-      }
-    } else if (action === 'hunting') {
-      for (const hunter of finishing) {
-        // Find animal on same tile to consume
-        const prey = animals.find(a =>
-          a.position.x === hunter.position.x &&
-          a.position.y === hunter.position.y &&
-          !consumedAnimalIds.has(a.id)
-        );
-        if (prey) {
-          consumedAnimalIds.add(prey.id);
-        }
-        resolvedIds.add(hunter.id);
-      }
-    } else if (action === 'gathering') {
-      for (const gatherer of finishing) {
-        // Gather from fruit tree on same tile
-        const treeIdx = trees.findIndex(tr =>
-          tr.hasFruit && tr.fruitPortions > 0 &&
-          tr.position.x === gatherer.position.x &&
-          tr.position.y === gatherer.position.y
-        );
-        if (treeIdx >= 0) {
-          trees[treeIdx] = {
-            ...trees[treeIdx],
-            fruitPortions: trees[treeIdx].fruitPortions - 1,
-            hasFruit: trees[treeIdx].fruitPortions > 1,
-          };
-        }
-        resolvedIds.add(gatherer.id);
+    for (const [, group] of exFightersByTile) {
+      if (group.length < 2) continue;
+      const [a, b] = group;
+      const winner = fightWinner(a, b);
+      const loserId = winner.id === a.id ? b.id : a.id;
+      const loserEntity = winner.id === a.id ? b : a;
+      // Extra -20 on loser brings total to -40 from combat
+      if (loserEntity.energy - 20 <= 0) {
+        deadIds.add(loserId);
+        logEvent(loserEntity, 'death', { cause: 'fight', detail: `killed by ${winner.name}` });
       }
     }
   }
 
-  // Clean up house occupants for dead entities
   for (const deadId of deadIds) {
     for (const h of houses) {
       const idx = h.occupants.indexOf(deadId);
       if (idx >= 0) h.occupants.splice(idx, 1);
     }
   }
-
-  // Apply results from resolved actions
-  entities = entities
-    .filter(e => !deadIds.has(e.id))
-    .map(e => {
-      if (resolvedIds.has(e.id)) {
-        let energy = e.energy;
-        let meat = e.meat;
-        if (e.state === 'chopping') {
-          return { ...e, state: 'idle' as const, stateTimer: 0, energy: Math.max(0, energy - 10), meat };
-        } else if (e.state === 'building') {
-          return { ...e, state: 'idle' as const, stateTimer: 0, energy: Math.max(0, energy - 10), meat };
-        } else if (e.state === 'training') {
-          // Sparring boosts random combat stat slightly
-          const boosted = { ...e.traits };
-          const roll = Math.random();
-          if (roll < 0.5) {
-            boosted.strength = Math.min(10, +(boosted.strength + 0.3).toFixed(1));
-          } else if (roll < 0.8) {
-            boosted.speed = Math.min(3, +(boosted.speed + 0.1).toFixed(1));
-          } else {
-            boosted.perception = Math.min(5, +(boosted.perception + 0.2).toFixed(1));
-          }
-          energy = Math.max(0, energy - 5); // light energy cost
-          return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat, traits: boosted };
-        } else if (e.state === 'fighting') {
-          energy = Math.max(0, energy - 20);
-          return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat };
-        } else if (e.state === 'hunting') {
-          const hadPrey = animals.some(a =>
-            a.position.x === e.position.x &&
-            a.position.y === e.position.y &&
-            consumedAnimalIds.has(a.id)
-          );
-          if (hadPrey) {
-            const direct = eatDirectlyToThreshold(e, ENERGY_MEAT, MEAT_PORTIONS_PER_HUNT);
-            energy = direct.entity.energy;
-            // Surplus handled by carrying system in goal-arrival
-          }
-        } else if (e.state === 'gathering') {
-          const fruitTree = trees.find(tr =>
-            tr.fruiting &&
-            tr.position.x === e.position.x &&
-            tr.position.y === e.position.y
-          );
-          if (fruitTree) {
-            const direct = eatDirectlyToThreshold(e, ENERGY_PLANT, TREE_FRUIT_PORTIONS);
-            energy = direct.entity.energy;
-            // Surplus handled by carrying system in goal-arrival
-          }
-        } else if (e.state === 'pregnant') {
-          return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat, fatherTraits: undefined, birthCooldown: BIRTH_COOLDOWN };
-        }
-
-        return { ...e, state: 'idle' as const, stateTimer: 0, energy, meat };
-      }
-      if (e.state !== 'idle' && e.stateTimer > 1) {
-        return { ...e, stateTimer: e.stateTimer - 1 };
-      }
-      return e;
-    });
+  entities = entities.filter(e => !deadIds.has(e.id));
   entities.push(...babies);
-  entities = entities.map(e => {
-    const home = isChild(e) ? homePosition(e, houses) : undefined;
-    return home ? { ...e, position: { ...home }, state: 'idle' as const, stateTimer: 0 } : e;
-  });
-
-  // Remove consumed resources
-  animals = animals.filter(a => !consumedAnimalIds.has(a.id));
-
-  // (Animals move after human movement + hunting detection — see step 5)
 
   // --- Step 2: Detect interactions (pre-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, houses, log, tickNum);
+  entities = detectInteractions(entities, gridSize, updatedVillages, houses, log, tickNum);
 
   // --- Step 3: Move idle entities ---
   const moveGrid = createOccupancyGrid(gridSize, entities, houses);
@@ -1027,44 +1140,45 @@ export function tick(state: WorldState): WorldState {
 
   const babyIds = new Set(babies.map(b => b.id));
 
+  // Precompute tribe-wide + global stats once. Saves N×iteration of entities/houses
+  // inside buildAIContext (called per entity).
+  const pre = precomputeContext(updatedVillages, entities, houses, animals, biomes, gridSize);
+
   for (const idx of indices) {
     let entity = entities[idx];
-    if (entity.state !== 'idle' || babyIds.has(entity.id)) continue;
-    if (isChild(entity) && homePosition(entity, houses)) continue;
+    // Only idle/moving entities are processed here. Working entities finished resolution above.
+    if (entity.activity.kind === 'working' || babyIds.has(entity.id)) continue;
+    if (isChild(entity)) continue;
 
-    // Interrupt: critical hunger clears current goal
-    if (entity.energy < 20 && entity.goal) {
-      entity = { ...entity, goal: undefined };
+    // Critical hunger interrupts current travel — re-decide (likely survival deposit).
+    if (entity.energy < 20 && entity.activity.kind === 'moving') {
+      entity = { ...entity, activity: IDLE };
       entities[idx] = entity;
     }
 
-    // Periodic re-evaluation with hysteresis
-    if (entity.goal && tickNum > 0 && (tickNum - entity.goalSetTick) % 20 === 0) {
-      const ctx = buildAIContext(entity, updatedVillages, animals, trees, entities, biomes, gridSize, tickNum, houses);
-      const result = shouldReEvaluate(ctx, entity.goal.type, entity.goalSetTick, tickNum);
-      if (result.interrupt && result.newAction) {
-        const goal = actionToGoal(result.newAction, ctx);
-        if (goal) {
-          entity = { ...entity, goal, goalSetTick: tickNum };
-        } else {
-          entity = { ...entity, goal: undefined, goalSetTick: tickNum };
-        }
+    // Periodic re-evaluation of current travel goal (hysteresis — every RE_EVAL_INTERVAL).
+    if (entity.activity.kind === 'moving' && tickNum > 0
+        && (tickNum - entity.activity.setTick) % 20 === 0) {
+      const ctx = buildAIContext(entity, updatedVillages, animals, trees, entities, biomes, gridSize, tickNum, houses, pre);
+      const result = shouldReEvaluate(ctx, entity.activity.purpose, entity.activity.setTick, tickNum);
+      if (result.interrupt) {
+        entity = { ...entity, activity: result.newActivity ?? IDLE };
         entities[idx] = entity;
       }
     }
 
-    // Get goal from utility-AI if none
-    if (!entity.goal) {
-      const ctx = buildAIContext(entity, updatedVillages, animals, trees, entities, biomes, gridSize, tickNum, houses);
+    // No activity → ask AI for a new one.
+    if (entity.activity.kind === 'idle') {
+      const ctx = buildAIContext(entity, updatedVillages, animals, trees, entities, biomes, gridSize, tickNum, houses, pre);
       const action = decideAction(ctx);
-      const goal = actionToGoal(action, ctx);
-      if (goal) {
-        entity = { ...entity, goal, goalSetTick: tickNum };
+      const newActivity = actionToActivity(action, ctx, tickNum);
+      if (newActivity) {
+        entity = { ...entity, activity: newActivity };
         entities[idx] = entity;
       } else {
-        // Non-goal action (rest, play, wander) — execute once
+        // Non-movement actions (play / wander / rest) — one random step and done.
         if (action.type === 'play' || action.type === 'wander') {
-          const target = randomStepBiome(entity.position, gridSize, biomes, houseTiles);
+          const target = randomStepBiome(entity.position, gridSize, biomes, blockedTiles);
           if (moveGrid[target.y][target.x] < 1) {
             moveGrid[entity.position.y][entity.position.x]--;
             moveGrid[target.y][target.x]++;
@@ -1072,12 +1186,15 @@ export function tick(state: WorldState): WorldState {
             entities[idx] = entity;
           }
         }
-        continue; // rest or single-step done
+        continue;
       }
     }
 
-    // Hunt re-targeting: update target to nearest visible animal, keep walking if none visible
-    if (entity.goal?.type === 'hunt') {
+    // Must be moving from here on.
+    if (entity.activity.kind !== 'moving') continue;
+
+    // Hunt re-targeting: chase the nearest visible animal within perception range.
+    if (entity.activity.purpose === 'hunt') {
       const sense = Math.floor(3 + entity.traits.perception * 2);
       let closest: Animal | undefined;
       let closestDist = Infinity;
@@ -1086,293 +1203,195 @@ export function tick(state: WorldState): WorldState {
         if (d > 0 && d <= sense && d < closestDist) { closestDist = d; closest = a; }
       }
       if (closest) {
-        // See an animal — chase it directly
-        entity = { ...entity, goal: { ...entity.goal, target: closest.position } };
+        entity = { ...entity, activity: { ...entity.activity, target: closest.position } };
         entities[idx] = entity;
       }
-      // If no animal visible, keep walking toward current target (herd center)
     }
 
-    // Pursue goal — move toward target
-    if (entity.goal?.target) {
-      const inForest = biomes[entity.position.y][entity.position.x] === 'forest';
-      const speed = Math.max(1, entity.traits.speed - (inForest ? FOREST_SPEED_PENALTY : 0));
+    // Walk / run toward target. Running doubles step count; forest forces walk.
+    if (entity.activity.kind !== 'moving') continue;
+    const inForest = biomes[entity.position.y][entity.position.x] === 'forest';
+    const baseSpeed = Math.max(1, entity.traits.speed - (inForest ? FOREST_SPEED_PENALTY : 0));
+    const startPace = entity.activity.pace;
+    const effectivePace: Pace = inForest ? 'walk' : startPace;
+    const steps = effectivePace === 'run' ? baseSpeed * 2 : baseSpeed;
 
-      for (let step = 0; step < speed; step++) {
-        if (entity.state !== 'idle' || !entity.goal?.target) break;
+    // Arrival: structure/social targets stop adjacent; other targets require exact tile.
+    const structureStop = (p: Purpose) => p === 'deposit' || p === 'cook' || p === 'spar';
 
-        const moveTarget = stepToward(entity.position, entity.goal.target, biomes, gridSize, houseTiles);
+    for (let step = 0; step < steps; step++) {
+      if (entity.activity.kind !== 'moving') break;
+      const mov = entity.activity;
+      const target = mov.target;
+      const atTarget = structureStop(mov.purpose)
+        ? manhattan(entity.position, target) <= 1
+        : entity.position.x === target.x && entity.position.y === target.y;
+
+      if (!atTarget) {
+        const moveTarget = stepToward(entity.position, target, biomes, gridSize, blockedTiles, moveGrid);
         if (!moveTarget || (moveTarget.x === entity.position.x && moveTarget.y === entity.position.y)) {
-          // Can't move or already there — clear goal
-          entity = { ...entity, goal: undefined };
+          entity = { ...entity, activity: IDLE };
           entities[idx] = entity;
           break;
         }
-
-        // Allow up to 2 entities on a tile (passing through or arriving for instant action)
-        const canPass = moveGrid[moveTarget.y][moveTarget.x] < 2;
-        if (canPass) {
-          moveGrid[entity.position.y][entity.position.x]--;
-          moveGrid[moveTarget.y][moveTarget.x]++;
-          entity = { ...entity, position: moveTarget };
-          entities[idx] = entity;
-
-          // Arrived at goal target — resolve action
-          if (entity.goal?.target && entity.position.x === entity.goal.target.x && entity.position.y === entity.goal.target.y) {
-            const goalType = entity.goal.type;
-            entity = { ...entity, goal: undefined };
-            entities[idx] = entity;
-
-            if (goalType === 'hunt') {
-              const prey = animals.findIndex(a =>
-                Math.abs(a.position.x - entity.position.x) + Math.abs(a.position.y - entity.position.y) <= HUNT_KILL_RANGE
-              );
-              if (prey >= 0) {
-                animals.splice(prey, 1);
-                // Eat some on the spot, carry the rest home
-                const direct = eatDirectlyToThreshold(entity, ENERGY_MEAT, MEAT_PORTIONS_PER_HUNT);
-                entity = { ...direct.entity, carrying: { type: 'meat', amount: direct.remainingPortions } };
-                entities[idx] = entity;
-                logEvent(entity, 'hunt');
-              }
-            } else if (goalType === 'gather') {
-              const treeIdx = trees.findIndex(tr =>
-                tr.hasFruit && tr.fruitPortions > 0 &&
-                tr.position.x === entity.position.x && tr.position.y === entity.position.y
-              );
-              if (treeIdx >= 0) {
-                trees[treeIdx] = {
-                  ...trees[treeIdx],
-                  fruitPortions: trees[treeIdx].fruitPortions - 1,
-                  hasFruit: trees[treeIdx].fruitPortions > 1,
-                };
-                const direct = eatDirectlyToThreshold(entity, ENERGY_PLANT, TREE_FRUIT_PORTIONS);
-                entity = { ...direct.entity, carrying: { type: 'fruit', amount: direct.remainingPortions } };
-                entities[idx] = entity;
-              }
-            } else if (goalType === 'chop') {
-              const standingTree = trees.some(t => !t.chopped && t.position.x === entity.position.x && t.position.y === entity.position.y);
-              if (biomes[entity.position.y][entity.position.x] === 'forest' && standingTree) {
-                entity = { ...entity, state: 'chopping' as const, stateTimer: CHOPPING_DURATION, goal: undefined };
-                entities[idx] = entity;
-              }
-            } else if (goalType === 'build') {
-              const v = getVillage(entity.tribe);
-              if (v && v.woodStore >= HOUSE_WOOD_COST
-                  && isValid3x3BuildSite(entity.position.x, entity.position.y, biomes, gridSize, houses, updatedVillages)) {
-                v.woodStore -= HOUSE_WOOD_COST;
-                entity = { ...entity, state: 'building' as const, stateTimer: BUILDING_DURATION, goal: undefined };
-                entities[idx] = entity;
-              }
-            }
-
-            // Deposit carried resources ONLY when arriving home (return_home goal)
-            if (goalType === 'return_home' && entity.carrying && entity.carrying.amount > 0) {
-              const myHome = entity.homeId ? houses.find(h => h.id === entity.homeId) : undefined;
-              const depositAmount = entity.carrying.amount;
-              if (myHome) {
-                if (entity.carrying.type === 'meat') myHome.inventory.meat += depositAmount;
-                else if (entity.carrying.type === 'fruit') myHome.inventory.fruit += depositAmount;
-                else if (entity.carrying.type === 'wood') myHome.inventory.wood += depositAmount;
-              } else {
-                const v = getVillage(entity.tribe);
-                if (v) {
-                  if (entity.carrying.type === 'meat') v.meatStore += depositAmount;
-                  else if (entity.carrying.type === 'fruit') v.plantStore += depositAmount;
-                  else if (entity.carrying.type === 'wood') v.woodStore += depositAmount;
-                }
-              }
-              entity = { ...entity, carrying: undefined };
-              entities[idx] = entity;
-            }
-            break;
-          }
-
-        }
+        if (moveGrid[moveTarget.y][moveTarget.x] >= MAX_ENTITIES_PER_TILE) continue;
+        moveGrid[entity.position.y][entity.position.x]--;
+        moveGrid[moveTarget.y][moveTarget.x]++;
+        entity = { ...entity, position: moveTarget };
+        entities[idx] = entity;
+        continue;
       }
+
+      // Arrived — dispatch by purpose. Arrival sets new activity (either working or idle).
+      switch (mov.purpose) {
+        case 'hunt':    entity = resolveHuntArrival(entity, animals); break;
+        case 'gather':  entity = resolveGatherArrival(entity, trees); break;
+        case 'chop':    entity = resolveChopArrival(entity, trees, biomes); break;
+        case 'build':   entity = resolveBuildArrival(entity, biomes, gridSize, houses, updatedVillages, getVillage); break;
+        case 'cook':    entity = resolveCookArrival(entity, getVillage); break;
+        case 'spar':    entity = { ...entity, activity: IDLE }; break; // sparring fires via detectInteractions
+        case 'deposit': entity = depositCarrying({ ...entity, activity: IDLE }, getVillage); break;
+      }
+      entities[idx] = entity;
+      break;
+    }
+
+    // Running burns extra energy once per tick (regardless of how many steps were taken).
+    if (!inForest && startPace === 'run' && entity.activity.kind === 'moving') {
+      const extraDrain = (RUN_ENERGY_MULTIPLIER - 1);
+      entity = { ...entity, energy: Math.max(0, entity.energy - extraDrain) };
+      entities[idx] = entity;
     }
   }
 
   // --- Step 4: Detect interactions (post-movement) ---
-  entities = detectInteractions(entities, gridSize, resolvedIds, updatedVillages, houses, log, tickNum);
+  entities = detectInteractions(entities, gridSize, updatedVillages, houses, log, tickNum);
 
   // --- Step 5: Move animals (AFTER humans so hunters can catch them) ---
-  // Precompute herd centers for inter-herd repulsion
-  const herdCenters = new Map<string, Position>();
-  {
-    const herdSums = new Map<string, { x: number; y: number; n: number }>();
-    for (const a of animals) {
-      const s = herdSums.get(a.herdAlpha) ?? { x: 0, y: 0, n: 0 };
-      s.x += a.position.x; s.y += a.position.y; s.n++;
-      herdSums.set(a.herdAlpha, s);
-    }
-    for (const [id, s] of herdSums) {
-      herdCenters.set(id, { x: Math.round(s.x / s.n), y: Math.round(s.y / s.n) });
-    }
-  }
+  // Single-herd model: centroid = mean of all animal positions. Shifts naturally when
+  // animals flee or drift. There's no alpha; the herd follows its own center of mass.
+  const herdCentroid: Position | undefined = animals.length > 0 ? (() => {
+    let sx = 0, sy = 0;
+    for (const a of animals) { sx += a.position.x; sy += a.position.y; }
+    return { x: Math.round(sx / animals.length), y: Math.round(sy / animals.length) };
+  })() : undefined;
 
-  // Build animal occupancy set — 1 animal per tile
+  // Occupancy for animals: one animal per tile, also block entity tiles.
   const animalOccupied = new Set<string>();
   for (const a of animals) animalOccupied.add(`${a.position.x},${a.position.y}`);
-  // Also block entity tiles
   for (const e of entities) animalOccupied.add(`${e.position.x},${e.position.y}`);
 
-  // Precompute herd sizes for alertness and reproduction
-  const herdSizes = new Map<string, number>();
-  for (const a of animals) herdSizes.set(a.herdAlpha, (herdSizes.get(a.herdAlpha) ?? 0) + 1);
-
-  // Precompute alpha positions for O(1) lookup
-  const alphaPositions = new Map<string, Position>();
-  for (const a of animals) {
-    if (a.id === a.herdAlpha) alphaPositions.set(a.id, a.position);
-  }
-
-  // Precompute settlement positions animals should avoid
-  const settlementPositions: Position[] = [];
-  for (const v of updatedVillages) { if (v.stockpile) settlementPositions.push(v.stockpile); }
-  for (const h of houses) { settlementPositions.push({ x: h.position.x + 1, y: h.position.y + 1 }); }
-  const VILLAGE_AVOID_RANGE = scaled(5, gridSize, 3);
+  const fleeRange = RUNTIME_CONFIG.animalFleeRange;
+  const panicDuration = RUNTIME_CONFIG.animalPanicDuration;
+  const LEASH = RUNTIME_CONFIG.herdLeash;
 
   for (let ai = 0; ai < animals.length; ai++) {
     const a = animals[ai];
     let newPos: Position;
+    let skipAntiBacktrack = false;
 
-    // Small herds are more alert: wider flee range, longer panic
-    const myHerdSize = herdSizes.get(a.herdAlpha) ?? 1;
-    const alertness = Math.max(1, Math.round(4 / Math.max(1, myHerdSize / 5))); // 4 at size 5, 2 at size 10, 1 at size 20+
-    const dynamicFleeRange = ANIMAL_FLEE_RANGE + alertness;
-    const dynamicPanicDuration = 4 + alertness * 2; // 6-12 ticks
+    const myKey = `${a.position.x},${a.position.y}`;
+    const blockedForAnimal = new Set(blockedTiles);
+    for (const k of animalOccupied) {
+      if (k !== myKey) blockedForAnimal.add(k);
+    }
 
-    let nearestHumanDist = dynamicFleeRange + 1;
+    // Nearest human — triggers flee if within alertness range
+    let nearestHumanDist = fleeRange + 1;
     let nearestHumanPos: Position | null = null;
     for (const e of entities) {
       const d = manhattan(a.position, e.position);
-      if (d > 0 && d <= dynamicFleeRange && d < nearestHumanDist) {
+      if (d > 0 && d <= fleeRange && d < nearestHumanDist) {
         nearestHumanDist = d;
         nearestHumanPos = e.position;
       }
     }
-    // Panic: set when human first spotted, don't refresh while already fleeing
     let panicTicks = a.panicTicks;
-    if (nearestHumanPos && panicTicks <= 0) {
-      panicTicks = dynamicPanicDuration;
-    }
+    if (nearestHumanPos && panicTicks <= 0) panicTicks = panicDuration;
+
+    // ── Priority decision tree ──
+    //   1. PANIC    — flee from nearest human
+    //   2. GRAZE    — on grass + hungry → stay (Step 5a eats)
+    //   3. LEASH    — too far from centroid → head back
+    //   4. DRIFT    — bare tile → step to nearest grass (else toward centroid)
+    //   5. REST     — else stay
+    const centroidDist = herdCentroid ? manhattan(a.position, herdCentroid) : 0;
+    const onGrass = (grass[a.position.y]?.[a.position.x] ?? 0) > 0;
 
     if (panicTicks > 0) {
       panicTicks--;
-      if (tickNum % 2 === 0) {
-        // Flee away from nearest human, or random if no human visible
-        if (nearestHumanPos) {
-          const dx = a.position.x - nearestHumanPos.x;
-          const dy = a.position.y - nearestHumanPos.y;
-          const flee = Math.abs(dx) >= Math.abs(dy)
-            ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
-            : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
-          newPos = isValidMove(flee, biomes, gridSize, houseTiles)
-            ? flee : randomStepBiome(a.position, gridSize, biomes, houseTiles);
-        } else {
-          // No human visible but still panicked — random flee
-          newPos = randomStepBiome(a.position, gridSize, biomes, houseTiles);
-        }
-      } else {
-        newPos = a.position; // reaction delay on odd ticks
-      }
-    } else {
-      // Avoid settlements — drift away if too close
-      let nearestSettlement: Position | undefined;
-      let nearestSettlementDist = Infinity;
-      for (const sp of settlementPositions) {
-        const d = manhattan(a.position, sp);
-        if (d < VILLAGE_AVOID_RANGE && d < nearestSettlementDist) {
-          nearestSettlementDist = d;
-          nearestSettlement = sp;
-        }
-      }
-      if (nearestSettlement && Math.random() < 0.3) {
-        const dx = a.position.x - nearestSettlement.x;
-        const dy = a.position.y - nearestSettlement.y;
-        const away = Math.abs(dx) >= Math.abs(dy)
+      // Always flee 1 tile per tick while panicking — no skipped ticks, no visual "teleport".
+      // If the straight-away tile is blocked, try the perpendicular axis before giving up.
+      if (nearestHumanPos) {
+        const dx = a.position.x - nearestHumanPos.x;
+        const dy = a.position.y - nearestHumanPos.y;
+        const primary = Math.abs(dx) >= Math.abs(dy)
           ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
           : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
-        newPos = isValidMove(away, biomes, gridSize, houseTiles) ? away : a.position;
-      } else {
-      // Find nearest grass tile
-      let nearestGrass: Position | undefined;
-      let nearestGrassDist = Infinity;
-      for (let dy = -5; dy <= 5; dy++) {
-        for (let dx = -5; dx <= 5; dx++) {
-          const nx = a.position.x + dx, ny = a.position.y + dy;
-          if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) continue;
-          if (grass[ny][nx] <= 0) continue;
-          const d = Math.abs(dx) + Math.abs(dy);
-          if (d > 0 && d < nearestGrassDist) {
-            nearestGrassDist = d;
-            nearestGrass = { x: nx, y: ny };
-          }
-        }
-      }
-      // Alpha's position (precomputed) or herd center as fallback
-      const alphaPos = alphaPositions.get(a.herdAlpha) ?? herdCenters.get(a.herdAlpha);
-      const alphaDist = alphaPos ? manhattan(a.position, alphaPos) : 0;
-
-      // Check if another herd is too close — alpha flees
-      let nearbyOtherHerd: Position | undefined;
-      const herdCenter = herdCenters.get(a.herdAlpha);
-      for (const [hId, hPos] of herdCenters) {
-        if (hId === a.herdAlpha) continue;
-        if (herdCenter && manhattan(herdCenter, hPos) < 8) { nearbyOtherHerd = hPos; break; }
-      }
-
-      // Non-alpha too far from alpha — ALWAYS return (max leash = 6)
-      if (a.id !== a.herdAlpha && alphaPos && alphaDist > 6) {
-        newPos = stepToward(a.position, alphaPos, biomes, gridSize, houseTiles);
-      } else if (nearestGrass && a.energy < 70) {
-        // Hungry — seek grass
-        newPos = stepToward(a.position, nearestGrass, biomes, gridSize, houseTiles);
-      } else if (nearbyOtherHerd && a.id === a.herdAlpha && Math.random() < 0.4) {
-        // Alpha flees from other herd — keeps herds separated
-        const dx = a.position.x - nearbyOtherHerd.x;
-        const dy = a.position.y - nearbyOtherHerd.y;
-        const away = Math.abs(dx) >= Math.abs(dy)
-          ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
-          : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
-        newPos = isValidMove(away, biomes, gridSize, houseTiles) ? away : a.position;
-      } else if (a.reproTimer === 0 && a.energy >= ANIMAL_REPRO_MIN_ENERGY && Math.random() < 0.3) {
-        // Seek mate (within own herd only)
-        const oppositeGender = a.gender === 'male' ? 'female' : 'male';
-        let nearestMate: Animal | undefined;
-        for (const other of animals) {
-          if (other.id === a.id || other.gender !== oppositeGender || other.herdAlpha !== a.herdAlpha) continue;
-          const d = manhattan(a.position, other.position);
-          if (d > 0 && d <= 10 && (!nearestMate || d < manhattan(a.position, nearestMate.position))) {
-            nearestMate = other;
-          }
-        }
-        newPos = nearestMate
-          ? stepToward(a.position, nearestMate.position, biomes, gridSize, houseTiles)
-          : a.position;
-      } else if (alphaPos && alphaDist > 3 && Math.random() < 0.5) {
-        // Move toward alpha
-        newPos = stepToward(a.position, alphaPos, biomes, gridSize, houseTiles);
-      } else if (alphaDist <= 3 && Math.random() < 0.1) {
-        // Close to alpha — occasional random wander (grazing drift)
-        newPos = randomStepBiome(a.position, gridSize, biomes, houseTiles);
+        const secondary = Math.abs(dx) >= Math.abs(dy)
+          ? { x: a.position.x, y: a.position.y + Math.sign(dy || 1) }
+          : { x: a.position.x + Math.sign(dx || 1), y: a.position.y };
+        newPos = isValidMove(primary, biomes, gridSize, blockedTiles)
+          ? primary
+          : isValidMove(secondary, biomes, gridSize, blockedTiles)
+            ? secondary
+            : a.position;
+        skipAntiBacktrack = true;
       } else {
         newPos = a.position;
       }
-      } // close settlement avoidance else
+    } else if (onGrass && a.energy < ANIMAL_ENERGY_MAX) {
+      newPos = a.position;
+    } else if (herdCentroid && centroidDist > LEASH) {
+      newPos = stepToward(a.position, herdCentroid, biomes, gridSize, blockedForAnimal);
+      skipAntiBacktrack = true;
+    } else if (!onGrass) {
+      // Drift to nearest grass within sight; fall back to centroid if no grass visible.
+      let nearGrass: Position | undefined;
+      let bestDist = Infinity;
+      const SIGHT = 4;
+      for (let dy = -SIGHT; dy <= SIGHT; dy++) {
+        for (let dx = -SIGHT; dx <= SIGHT; dx++) {
+          const nx = a.position.x + dx, ny = a.position.y + dy;
+          if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) continue;
+          if ((grass[ny]?.[nx] ?? 0) <= 0) continue;
+          const d = Math.abs(dx) + Math.abs(dy);
+          if (d > 0 && d < bestDist) { bestDist = d; nearGrass = { x: nx, y: ny }; }
+        }
+      }
+      newPos = nearGrass
+        ? stepToward(a.position, nearGrass, biomes, gridSize, blockedForAnimal)
+        : herdCentroid
+          ? stepToward(a.position, herdCentroid, biomes, gridSize, blockedForAnimal)
+          : a.position;
+    } else {
+      newPos = a.position;
     }
-    // Only move if target tile is free
+
+    // Anti-backtrack — don't bounce back to the prev tile (except for panic / leash).
+    if (!skipAntiBacktrack && a.prevPos && newPos !== a.position
+        && newPos.x === a.prevPos.x && newPos.y === a.prevPos.y) {
+      newPos = a.position;
+    }
+
+    // Commit move only if target tile free
     const newKey = `${newPos.x},${newPos.y}`;
-    const oldKey = `${a.position.x},${a.position.y}`;
     if (newPos !== a.position && animalOccupied.has(newKey)) {
-      newPos = a.position; // blocked, stay
+      newPos = a.position;
     }
-    if (newPos !== a.position) {
-      animalOccupied.delete(oldKey);
+    const moved = newPos !== a.position;
+    if (moved) {
+      animalOccupied.delete(myKey);
       animalOccupied.add(newKey);
     }
-    animals[ai] = { ...a, position: newPos, reproTimer: Math.max(0, a.reproTimer - 1), panicTicks };
+    const nextPrevPos = moved ? a.position : a.prevPos;
+    animals[ai] = {
+      ...a,
+      position: newPos,
+      prevPos: nextPrevPos,
+      reproTimer: Math.max(0, a.reproTimer - 1),
+      panicTicks,
+    };
   }
 
   // --- Step 5a: Animals graze on grass ---
@@ -1381,44 +1400,57 @@ export function tick(state: WorldState): WorldState {
     const gx = a.position.x, gy = a.position.y;
     if (grass[gy][gx] > 0 && a.energy < ANIMAL_ENERGY_MAX) {
       grass[gy][gx]--;
-      animals[i] = { ...a, energy: Math.min(ANIMAL_ENERGY_MAX, a.energy + ANIMAL_ENERGY_GRAZE) };
+      animals[i] = { ...a, energy: Math.min(ANIMAL_ENERGY_MAX, a.energy + RUNTIME_CONFIG.grazeEnergy) };
     }
   }
 
-  // --- Step 5b: Reproduce animals (adjacent tiles, M+F, requires energy) ---
+  // --- Step 5b: Reproduce animals (simplified — female timer only, no mate needed) ---
+  // Each well-fed female spawns a baby when her cooldown hits 0. maxHerdSize is the
+  // HARD CAP — when reached, reproduction pauses. Fertility is boosted when any tribe
+  // is running low on food (hungry humans → herd breeds faster → more food available).
+  if (animals.length < RUNTIME_CONFIG.maxHerdSize) {
+    // Tribe hunger signal — minimum days-of-food across villages. Fewer = more urgent boost.
+    let minDaysOfFood = Infinity;
+    for (const v of updatedVillages) {
+      let adults = 0, toddlers = 0;
+      for (const e of entities) {
+        if (e.tribe !== v.tribe) continue;
+        const y = ageInYears(e);
+        if (y >= CHILD_AGE) adults++;
+        else if (y >= ECONOMY.reproduction.infantAgeYears) toddlers++;
+      }
+      const energyPerDay = adults * 2 + toddlers * 2 * ECONOMY.reproduction.childDrainMultiplier;
+      if (energyPerDay <= 0) continue;
+      const stockpileEnergy =
+          v.meatStore         * ECONOMY.meat.energyPerUnit
+        + v.cookedMeatStore   * ECONOMY.cooking.cookedMeatEnergyPerUnit
+        + v.plantStore        * ECONOMY.fruit.energyPerUnit
+        + v.driedFruitStore   * ECONOMY.cooking.driedFruitEnergyPerUnit;
+      const days = stockpileEnergy / energyPerDay;
+      if (days < minDaysOfFood) minDaysOfFood = days;
+    }
+    // Hunger → shorter cooldown. <15 days → 4× faster, <30 → 2× faster, else baseline.
+    const hungerMultiplier = minDaysOfFood < 15 ? 0.25
+                            : minDaysOfFood < 30 ? 0.5
+                            : 1.0;
 
-  if (animals.length < animalMax) {
-    const matedIds = new Set<string>();
     const babyAnimals: Animal[] = [];
+    const popRatio = animals.length / RUNTIME_CONFIG.maxHerdSize;
+    const reproBase = RUNTIME_CONFIG.reproInterval;
+    const cooldown = Math.round(reproBase * Math.max(0.15, popRatio) * hungerMultiplier);
     const readyFemales = animals.filter(a => a.gender === 'female' && a.reproTimer === 0 && a.energy >= ANIMAL_REPRO_MIN_ENERGY);
     for (const female of readyFemales) {
-      if (matedIds.has(female.id) || animals.length + babyAnimals.length >= animalMax) break;
-      const mate = animals.find(a =>
-        a.gender === 'male' && a.reproTimer === 0 && a.energy >= ANIMAL_REPRO_MIN_ENERGY
-        && !matedIds.has(a.id) && manhattan(a.position, female.position) <= 1
-      );
-      if (!mate) continue;
-      matedIds.add(female.id);
-      matedIds.add(mate.id);
-      // Adaptive reproduction: scales with TOTAL population vs carrying capacity
-      const carryingCapacity = scaled(10, gridSize, 3); // ~10 animals on 30x30
-      const popRatio = animals.length / carryingCapacity;
-      // Below capacity: fast breeding. Above: exponentially slower.
-      const cooldown = popRatio <= 1
-        ? Math.round(ANIMAL_REPRO_INTERVAL * Math.max(0.15, popRatio))
-        : Math.round(ANIMAL_REPRO_INTERVAL * popRatio * popRatio); // exponential slowdown
-      female.reproTimer = cooldown;
-      mate.reproTimer = cooldown;
+      if (animals.length + babyAnimals.length >= RUNTIME_CONFIG.maxHerdSize) break;
       const ns = neighbors(female.position, gridSize).filter(n => isPassable(biomes[n.y][n.x]));
       if (ns.length === 0) continue;
+      female.reproTimer = cooldown;
       babyAnimals.push({
         id: generateId('a'),
         position: ns[Math.floor(Math.random() * ns.length)],
         gender: Math.random() < 0.5 ? 'male' : 'female',
         energy: ANIMAL_ENERGY_START,
-        reproTimer: ANIMAL_REPRO_INTERVAL,
+        reproTimer: reproBase,
         panicTicks: 0,
-        herdAlpha: female.herdAlpha,
       });
     }
     animals.push(...babyAnimals);
@@ -1430,51 +1462,13 @@ export function tick(state: WorldState): WorldState {
       return { ...a, energy: a.energy - ANIMAL_ENERGY_DRAIN };
     }
     return a;
-  }).filter(a => a.energy > 0); // dead animals removed
-
-  // Reassign alpha if old alpha died
-  const aliveIds = new Set(animals.map(a => a.id));
-  for (const a of animals) {
-    if (!aliveIds.has(a.herdAlpha)) {
-      // Alpha is dead — find new alpha (any male in same herd, or self)
-      const sameHerd = animals.filter(o => o.herdAlpha === a.herdAlpha);
-      const newAlpha = sameHerd.find(o => o.gender === 'male') ?? a;
-      for (const o of sameHerd) o.herdAlpha = newAlpha.id;
-    }
-  }
-
-  // --- Step 5d: Herd splitting when too large ---
-  {
-    const herdGroups = new Map<string, Animal[]>();
-    for (const a of animals) {
-      const group = herdGroups.get(a.herdAlpha) ?? [];
-      group.push(a);
-      herdGroups.set(a.herdAlpha, group);
-    }
-
-    for (const [alphaId, herd] of herdGroups) {
-      if (herd.length <= MAX_HERD_SIZE) continue;
-      // Find a young male to become new alpha
-      const newAlpha = herd.find(a => a.gender === 'male' && a.id !== alphaId);
-      if (!newAlpha) continue;
-      // Split: half the herd follows new alpha
-      let moved = 0;
-      const target = Math.floor(herd.length / 2);
-      for (const a of herd) {
-        if (a.id === alphaId) continue; // old alpha stays
-        if (moved >= target) break;
-        if (a.id === newAlpha.id || Math.random() < 0.5) {
-          a.herdAlpha = newAlpha.id;
-          moved++;
-        }
-      }
-    }
-  }
+  }).filter(a => a.energy > 0);
 
   // --- Step 5e: Animal migration — new animals arrive when population is low ---
+  // Single-herd world: migrants join the existing alpha. If no herd exists at all
+  // (extinction event), the first migrant becomes the new alpha.
   {
     const targetPop = scaled(ANIMAL_COUNT, gridSize, 4);
-    // Migration frequency scales with how depleted the population is
     const migrationInterval = animals.length === 0 ? 50 : animals.length < 4 ? 100 : 200;
     if (animals.length < targetPop / 2 && tickNum % migrationInterval === 0) {
       const edge = Math.random() < 0.5 ? 0 : gridSize - 1;
@@ -1482,8 +1476,7 @@ export function tick(state: WorldState): WorldState {
       const isHorizontal = Math.random() < 0.5;
       const spawnPos = isHorizontal ? { x: along, y: edge } : { x: edge, y: along };
       if (isPassable(biomes[spawnPos.y][spawnPos.x])) {
-        const alphaId = generateId('a');
-        const count = 3 + Math.floor(Math.random() * 3); // 3-5 animals
+        const count = 3 + Math.floor(Math.random() * 3); // 3-5 migrants
         for (let i = 0; i < count; i++) {
           const pos = i === 0 ? spawnPos : (() => {
             for (let a = 0; a < 10; a++) {
@@ -1493,13 +1486,12 @@ export function tick(state: WorldState): WorldState {
             return spawnPos;
           })();
           animals.push({
-            id: i === 0 ? alphaId : generateId('a'),
+            id: generateId('a'),
             position: pos,
             gender: i < count / 2 ? 'male' : 'female',
             energy: ANIMAL_ENERGY_START,
             reproTimer: 0,
             panicTicks: 0,
-            herdAlpha: alphaId,
           });
         }
       }
@@ -1509,12 +1501,9 @@ export function tick(state: WorldState): WorldState {
   // --- Step 6: Gradual seasonal fruit tree cycle ---
   // Each tick, individual trees have a small chance to transition.
   // Over a full season (~600 ticks), virtually all trees will have changed.
-  const ticksPerMonth = TICKS_PER_DAY * 10;
-  const month = Math.floor((tickNum % TICKS_PER_YEAR) / ticksPerMonth);
-  const season = Math.floor(month / 3);
-  const isWinter = season === 3;
-  const isSpring = season === 0;
-  const isSummer = season === 1;
+  // isWinter computed earlier (above Step 0) for the homeless-in-winter drain penalty.
+  const isSpring = currentSeason === 0;
+  const isSummer = currentSeason === 1;
 
   trees = trees.map(t => {
     if (t.chopped) return t;
@@ -1549,11 +1538,11 @@ export function tick(state: WorldState): WorldState {
           if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && biomes[ny][nx] === 'water') shore = true;
         }
       if (shore) continue;
-      if (Math.random() < GRASS_GROW_CHANCE) grass[y][x]++;
+      if (Math.random() < RUNTIME_CONFIG.grassGrowChance) grass[y][x]++;
     }
   }
 
-  // --- Step 7: Pheromone mating (every tick, not just night) ---
+  // --- Step 7: Pheromone mating (every tick) ---
   entities = pheromoneMating(entities, updatedVillages, houses, log, tickNum);
 
   // --- Step 7b: Homeless adults claim house slots ---
@@ -1567,19 +1556,25 @@ export function tick(state: WorldState): WorldState {
     }
   }
 
-  // --- Step 8: Winter — females without house lose energy (cold exposure) ---
-  if (isWinter) {
-    for (let i = 0; i < entities.length; i++) {
-      const e = entities[i];
-      if (e.gender === 'female' && !isChild(e) && !e.homeId) {
-        entities[i] = {
-          ...e,
-          energy: Math.max(0, e.energy - WINTER_COLD_DAMAGE),
-          coldExposure: true,
-        };
-      }
+  // --- Step 8: Children stick to mother (end-of-tick, after all adult movement).
+  //   Infants (< 1yr) are CARRIED — snap to mother's tile.
+  //   Toddlers (1..CHILD_AGE) walk — one BFS step toward mother; adjacent → stay.
+  // Orphans (motherId missing or mother dead): fall back to village stockpile so
+  // they don't starve alone in the wilderness.
+  entities = entities.map(e => {
+    if (!isChild(e)) return e;
+    const mother = e.motherId ? entities.find(m => m.id === e.motherId) : undefined;
+    const target: Position | undefined = mother?.position
+      ?? updatedVillages[e.tribe]?.stockpile;
+    if (!target) return e;
+    if (isInfant(e)) {
+      return { ...e, position: { ...target }, activity: IDLE };
     }
-  }
+    if (manhattan(e.position, target) <= 1) return e;
+    const next = stepToward(e.position, target, biomes, gridSize, blockedTiles);
+    if (!next || (next.x === e.position.x && next.y === e.position.y)) return e;
+    return { ...e, position: next, activity: IDLE };
+  });
 
   const fullLog = [...state.log, ...log];
   return { entities, animals, trees, houses, biomes, villages: updatedVillages, grass, tick: tickNum, gridSize, log: fullLog };

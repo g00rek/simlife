@@ -116,7 +116,7 @@ export function TilePanel({ tile, world, onSelectEntity, onClose }: TilePanelPro
                 <span style={{ color: '#666', marginLeft: '6px', fontSize: '10px' }}>
                   {ageInYears(e) < CHILD_AGE ? 'child' : `${ageInYears(e)}y`}
                   {' · '}
-                  {e.state === 'idle' ? (e.goal ? e.goal.type : 'idle') : e.state}
+                  {e.activity.kind === 'idle' ? 'idle' : e.activity.kind === 'moving' ? `→${e.activity.purpose}` : e.activity.action}
                 </span>
               </div>
             );

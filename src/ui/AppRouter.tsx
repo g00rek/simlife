@@ -4,10 +4,12 @@ import { App } from './App';
 import { SlashIconsPage } from './SlashIconsPage';
 import { LibraryPage } from './LibraryPage';
 import { MapPage } from './MapPage';
+import { AnimalsPage } from './AnimalsPage';
 
 const ROUTES: Array<{ path: string; label: string }> = [
   { path: '/', label: 'Game' },
   { path: '/map', label: 'Map' },
+  { path: '/animals', label: 'Animals' },
   { path: '/icons', label: 'Icons' },
   { path: '/library', label: 'Library' },
 ];
@@ -67,6 +69,7 @@ export function AppRouter() {
       {route === 'library' && <LibraryPage />}
       {route === 'icons' && <SlashIconsPage />}
       {route === 'map' && <MapPage />}
+      {route === 'animals' && <AnimalsPage />}
       {route === 'app' && <App />}
     </>
   );

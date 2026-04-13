@@ -9,7 +9,10 @@ import { TilePanel } from './TilePanel';
 import { PopGraph } from './PopGraph';
 import { EventLog } from './EventLog';
 import type { WorldState, Position } from '../engine/types';
-import { TICKS_PER_YEAR } from '../engine/types';
+import { TICKS_PER_YEAR, RUNTIME_CONFIG, loadRuntimeConfig } from '../engine/types';
+
+// Load persisted RUNTIME_CONFIG before world creation (sliders set on /animals page).
+loadRuntimeConfig();
 import { BowlFood, Leaf, Axe } from '@phosphor-icons/react';
 
 import { DEFAULT_BIOME_PARAMS } from '../engine/biomes';
@@ -73,6 +76,7 @@ export function App() {
   const [world, setWorld] = useState<WorldState>(() => initialWorldRef.current as WorldState);
   const [running, setRunning] = useState(false);
   const [speed, setSpeed] = useState(INITIAL_SPEED);
+  const [skipping, setSkipping] = useState<{ ticks: number; startedAt: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedTile, setSelectedTile] = useState<Position | null>(null);
   const [overlayPos, setOverlayPos] = useState<{ x: number; y: number } | null>(null);
@@ -102,7 +106,11 @@ export function App() {
           return updated.length > 200 ? updated.slice(-200) : updated;
         });
       }
+      // First snapshot after a skip request = skip done.
+      setSkipping(null);
     };
+    // Sync the user-tunable RUNTIME_CONFIG into the worker (worker has its own module instance).
+    worker.postMessage({ type: 'setRuntimeConfig', config: { ...RUNTIME_CONFIG } });
     worker.postMessage({ type: 'setWorld', world: initialWorldRef.current, speed: INITIAL_SPEED });
 
     return () => {
@@ -119,6 +127,11 @@ export function App() {
     workerRef.current?.postMessage({ type: 'setSpeed', speed });
   }, [speed]);
 
+  const handleSkip = useCallback((ticks: number) => {
+    setSkipping({ ticks, startedAt: performance.now() });
+    workerRef.current?.postMessage({ type: 'skip', ticks });
+  }, []);
+
   const selectedEntity = selectedId
     ? world.entities.find(e => e.id === selectedId) ?? null
     : null;
@@ -132,7 +145,6 @@ export function App() {
     const births = log.filter(e => e.type === 'birth');
     const byOldAge = deaths.filter(e => e.cause === 'old_age').length;
     const byStarvation = deaths.filter(e => e.cause === 'starvation').length;
-    const byCold = deaths.filter(e => e.cause === 'cold').length;
     const byFight = deaths.filter(e => e.cause === 'fight').length;
     const byChildbirth = deaths.filter(e => e.cause === 'childbirth').length;
 
@@ -145,7 +157,6 @@ export function App() {
       `Deaths: ${deaths.length}`,
       `  Old age: ${byOldAge}`,
       `  Starvation: ${byStarvation}`,
-      `  Cold: ${byCold}`,
       `  Fight: ${byFight}`,
       `  Childbirth: ${byChildbirth}`,
       ``,
@@ -188,10 +199,10 @@ export function App() {
     window.addEventListener('mouseup', onUp);
   }, [overlayPos]);
 
-  const handleCanvasClick = useCallback((x: number, y: number) => {
+  const handleCanvasClick = useCallback((x: number, y: number, clientX: number, clientY: number) => {
     setSelectedTile({ x, y });
-    const cellSize = mapSize / world.gridSize;
-    setOverlayPos({ x: Math.round((x + 2) * cellSize), y: Math.round(y * cellSize) });
+    // Place overlay slightly to the right of cursor, in viewport coords (position: fixed).
+    setOverlayPos({ x: Math.round(clientX + 16), y: Math.round(clientY - 8) });
     const entity = world.entities.find(
       e => {
         const home = e.homeId ? world.houses.find(house => house.id === e.homeId) : undefined;
@@ -232,6 +243,7 @@ export function App() {
         onToggle={() => setRunning(r => !r)}
         onSpeedChange={setSpeed}
         onReset={handleReset}
+        onSkip={handleSkip}
       />
     </div>
   );
@@ -239,6 +251,27 @@ export function App() {
   const extinctBanner = extinct ? (
     <div style={{ background: '#f7768e22', border: '1px solid #f7768e', borderRadius: '4px', padding: '8px 12px', fontSize: '14px' }}>
       Extinct in year {Math.floor(world.tick / TICKS_PER_YEAR)}
+    </div>
+  ) : null;
+
+  const skippingBanner = skipping ? (
+    <div style={{
+      position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)',
+      background: '#7aa2f7', color: '#0f1520',
+      padding: '8px 16px', borderRadius: '6px',
+      fontSize: '12px', fontWeight: 700,
+      zIndex: 2000,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+      display: 'inline-flex', alignItems: 'center', gap: '8px',
+    }}>
+      <span className="skip-spinner" style={{
+        display: 'inline-block', width: 10, height: 10,
+        borderRadius: '50%',
+        border: '2px solid #0f1520', borderTopColor: 'transparent',
+        animation: 'skipSpin 0.8s linear infinite',
+      }} />
+      Calculating {skipping.ticks} ticks…
+      <style>{`@keyframes skipSpin { to { transform: rotate(360deg); } }`}</style>
     </div>
   ) : null;
 
@@ -280,6 +313,7 @@ export function App() {
       <div style={desktopContainerStyle}>
         {header}
         {extinctBanner}
+        {skippingBanner}
         <div style={bodyStyle}>
           <div style={mainColStyle}>
             <div style={{ position: 'relative' }}>
@@ -291,14 +325,14 @@ export function App() {
               />
               {overlayPos && (selectedEntity || selectedTile) && (
                 <div style={{
-                  position: 'absolute',
+                  position: 'fixed',
                   left: overlayPos.x,
                   top: overlayPos.y,
                   width: 220,
                   background: 'rgba(22, 22, 30, 0.95)',
                   border: '1px solid #2d3346',
                   borderRadius: 6,
-                  zIndex: 10,
+                  zIndex: 1000,
                   fontSize: 11,
                   pointerEvents: 'auto',
                 }}>
@@ -329,6 +363,7 @@ export function App() {
     <div style={mobileContainerStyle}>
       {header}
       {extinctBanner}
+      {skippingBanner}
       <div style={{ position: 'relative' }}>
         <GridCanvas
           world={world}
@@ -339,14 +374,14 @@ export function App() {
         />
         {overlayPos && (selectedEntity || selectedTile) && (
           <div style={{
-            position: 'absolute',
+            position: 'fixed',
             left: overlayPos.x,
             top: overlayPos.y,
             width: 200,
             background: 'rgba(22, 22, 30, 0.95)',
             border: '1px solid #2d3346',
             borderRadius: 6,
-            zIndex: 10,
+            zIndex: 1000,
             fontSize: 11,
           }}>
             <div onMouseDown={handleDragStart} style={{ padding: '6px 8px', cursor: 'grab', borderBottom: '1px solid #2d3346', color: '#888', fontSize: 10, userSelect: 'none' }}>

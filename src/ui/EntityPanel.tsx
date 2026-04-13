@@ -1,9 +1,58 @@
-import type { Entity, WorldState } from '../engine/types';
+import type { Entity, WorldState, Purpose, Action } from '../engine/types';
 import type { ReactNode } from 'react';
-import { CHILD_AGE } from '../engine/types';
+import { CHILD_AGE, TICKS_PER_DAY, MIN_REPRODUCTIVE_AGE, MAX_REPRODUCTIVE_AGE } from '../engine/types';
+
+const DAYS_PER_MONTH = 10;
+const MONTHS_PER_YEAR = 12;
+
+// Reproductive lifecycle status — orthogonal to activity state.
+// Males have no refractory period; only pregnancy + postpartum (females) gate fertility.
+type FertilityStatus = 'too young' | 'too old' | 'pregnant' | 'postpartum' | 'ready to mate';
+function fertilityStatus(entity: Entity): FertilityStatus {
+  const years = Math.floor(entity.age / 2400); // TICKS_PER_YEAR
+  if (years < MIN_REPRODUCTIVE_AGE) return 'too young';
+  if (years > MAX_REPRODUCTIVE_AGE) return 'too old';
+  if (entity.pregnancyTimer > 0) return 'pregnant';
+  if (entity.birthCooldown > 0) return 'postpartum';  // female after birth, recovery
+  return 'ready to mate';
+}
+
+function carryingColor(type: 'meat' | 'wood' | 'fruit'): string {
+  switch (type) {
+    case 'meat': return '#ff9e64';  // orange — raw meat
+    case 'wood': return '#bb9af7';  // purple — wood
+    case 'fruit': return '#9ece6a'; // green — fruit
+  }
+}
+
+function fertilityColor(status: FertilityStatus): string {
+  switch (status) {
+    case 'ready to mate': return '#9ece6a'; // green
+    case 'pregnant': return '#f7768e'; // pink
+    case 'postpartum': return '#bb9af7'; // purple
+    case 'too young': case 'too old': return '#666'; // dim gray
+  }
+}
+
+// Format game ticks as human-readable duration: days, months, years.
+// Examples: 15→'<1d', 40→'2d', 250→'1m 3d', 2600→'1y 1m'.
+function formatDuration(ticks: number): string {
+  if (ticks <= 0) return '0d';
+  if (ticks < TICKS_PER_DAY) return '<1d';
+  const totalDays = Math.round(ticks / TICKS_PER_DAY);
+  if (totalDays < DAYS_PER_MONTH) return `${totalDays}d`;
+  const totalMonths = Math.floor(totalDays / DAYS_PER_MONTH);
+  const remDays = totalDays % DAYS_PER_MONTH;
+  if (totalMonths < MONTHS_PER_YEAR) {
+    return remDays > 0 ? `${totalMonths}m ${remDays}d` : `${totalMonths}m`;
+  }
+  const years = Math.floor(totalMonths / MONTHS_PER_YEAR);
+  const remMonths = totalMonths % MONTHS_PER_YEAR;
+  return remMonths > 0 ? `${years}y ${remMonths}m` : `${years}y`;
+}
 import { ageInYears } from '../engine/world';
 import { buildAIContext, getScores, decideAction } from '../engine/utility-ai';
-import { Axe, GenderFemale, GenderMale, Hammer, House, Leaf, PersonSimpleRun, ShieldWarning, Sword, Baby } from '@phosphor-icons/react';
+import { Axe, CookingPot, GenderFemale, GenderMale, Hammer, House, Leaf, PersonSimpleRun, ShieldWarning, Sword, Baby } from '@phosphor-icons/react';
 
 interface EntityPanelProps {
   entity: Entity;
@@ -37,23 +86,29 @@ export function EntityPanel({ entity, world, onClose }: EntityPanelProps) {
         <span>{stateLabel(entity)}</span>
       </div>
       <div style={rowStyle}>
+        <span style={dimStyle}>Fertility:</span>
+        <span style={{ color: fertilityColor(fertilityStatus(entity)) }}>
+          {fertilityStatus(entity)}
+          {entity.pregnancyTimer > 0 && ` (${formatDuration(entity.pregnancyTimer)} left)`}
+          {entity.birthCooldown > 0 && entity.pregnancyTimer === 0 && ` (${formatDuration(entity.birthCooldown)} left)`}
+        </span>
+      </div>
+      <div style={rowStyle}>
         <span style={dimStyle}>Age:</span>
         <span>{ageInYears(entity)} yrs</span>
       </div>
       <div style={rowStyle}>
         <span style={dimStyle}>Energy:</span>
-        <span style={{ color: entity.energy < 40 ? '#f7768e' : '#9ece6a' }}>
+        <span style={{ color: entity.energy < 20 ? '#f7768e' : entity.energy < 60 ? '#e0af68' : '#9ece6a' }}>
           {Math.round(entity.energy)}
         </span>
       </div>
-      {entity.gender === 'male' && (
-        <div style={rowStyle}>
-          <span style={dimStyle}>Meat:</span>
-          <span style={{ color: entity.meat > 0 ? '#ff9e64' : '#666' }}>
-            {entity.meat} portions
-          </span>
-        </div>
-      )}
+      <div style={rowStyle}>
+        <span style={dimStyle}>Carrying:</span>
+        <span style={{ color: entity.carrying ? carryingColor(entity.carrying.type) : '#666' }}>
+          {entity.carrying ? `${entity.carrying.type} × ${entity.carrying.amount}` : '—'}
+        </span>
+      </div>
       <div style={{ ...labelStyle, marginTop: '8px' }}>Traits</div>
       <div style={rowStyle}>
         <span style={dimStyle}>Strength:</span>
@@ -100,12 +155,6 @@ export function EntityPanel({ entity, world, onClose }: EntityPanelProps) {
         <span style={dimStyle}>Home:</span>
         <span>{entity.homeId ?? 'none'}</span>
       </div>
-      {entity.gender === 'male' && entity.mateCooldown > 0 && (
-        <div style={rowStyle}>
-          <span style={dimStyle}>Mate CD:</span>
-          <span>{entity.mateCooldown}t</span>
-        </div>
-      )}
       {entity.gender === 'female' && entity.birthCooldown > 0 && (
         <div style={rowStyle}>
           <span style={dimStyle}>Birth CD:</span>
@@ -144,32 +193,44 @@ function Bar({ value, max, color }: { value: number; max: number; color: string 
   );
 }
 
+const stateIconRowStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+};
+
+const WORKING_LABEL: Record<Action, ReactNode> = {
+  hunting:   <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Hunting</span>,
+  gathering: <span style={stateIconRowStyle}><Leaf size={12} />Gathering</span>,
+  chopping:  <span style={stateIconRowStyle}><Axe size={12} />Chopping</span>,
+  building:  <span style={stateIconRowStyle}><Hammer size={12} />Building</span>,
+  cooking:   <span style={stateIconRowStyle}><CookingPot size={12} />Cooking</span>,
+  training:  <span style={stateIconRowStyle}><ShieldWarning size={12} />Training</span>,
+  fighting:  <span style={stateIconRowStyle}><Sword size={12} />Fighting</span>,
+};
+
+const MOVING_LABEL: Record<Purpose, ReactNode> = {
+  hunt:    <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Going to hunt</span>,
+  gather:  <span style={stateIconRowStyle}><Leaf size={12} />Going to gather</span>,
+  chop:    <span style={stateIconRowStyle}><Axe size={12} />Going to chop</span>,
+  build:   <span style={stateIconRowStyle}><Hammer size={12} />Going to build</span>,
+  cook:    <span style={stateIconRowStyle}><CookingPot size={12} />Going to cook</span>,
+  spar:    <span style={stateIconRowStyle}><ShieldWarning size={12} />Going to spar</span>,
+  deposit: <span style={stateIconRowStyle}><House size={12} />Going to stockpile</span>,
+};
+
 function stateLabel(entity: Entity): ReactNode {
-  switch (entity.state) {
-    case 'pregnant': return <span style={stateIconRowStyle}><Baby size={12} />Pregnant ({entity.stateTimer}t)</span>;
-    case 'fighting': return <span style={stateIconRowStyle}><Sword size={12} />Fighting</span>;
-    case 'training': return <span style={stateIconRowStyle}><ShieldWarning size={12} />Training</span>;
-    case 'chopping': return <span style={stateIconRowStyle}><Axe size={12} />Chopping</span>;
-    case 'building': return <span style={stateIconRowStyle}><Hammer size={12} />Building</span>;
-    case 'hunting': return <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Hunting</span>;
-    case 'gathering': return <span style={stateIconRowStyle}><Leaf size={12} />Gathering</span>;
-    case 'idle': {
-      const years = ageInYears(entity);
-      if (years < CHILD_AGE) return <span style={stateIconRowStyle}><Baby size={12} />Child</span>;
-      if (entity.goal) {
-        const goalLabels: Record<string, React.ReactNode> = {
-          hunt: <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Hunting</span>,
-          gather: <span style={stateIconRowStyle}><Leaf size={12} />Gathering</span>,
-          chop: <span style={stateIconRowStyle}><Axe size={12} />Going to chop</span>,
-          return_home: <span style={stateIconRowStyle}><House size={12} />Returning</span>,
-          build: <span style={stateIconRowStyle}><Hammer size={12} />Going to build</span>,
-        };
-        return goalLabels[entity.goal.type] ?? <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Moving</span>;
-      }
-      return <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Idle</span>;
-    }
-    default: return entity.state;
+  const years = ageInYears(entity);
+  if (years < CHILD_AGE) return <span style={stateIconRowStyle}><Baby size={12} />Child</span>;
+  const a = entity.activity;
+  if (a.kind === 'working') {
+    return <span style={stateIconRowStyle}>{WORKING_LABEL[a.action]} ({formatDuration(a.ticksLeft)})</span>;
   }
+  if (a.kind === 'moving') {
+    const pace = a.pace === 'run' ? ' 🏃' : '';
+    return <span style={stateIconRowStyle}>{MOVING_LABEL[a.purpose]}{pace}</span>;
+  }
+  return <span style={stateIconRowStyle}><PersonSimpleRun size={12} />Idle</span>;
 }
 
 const panelStyle: React.CSSProperties = {
@@ -206,10 +267,4 @@ const closeStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: '14px',
   padding: '2px 6px',
-};
-
-const stateIconRowStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '4px',
 };

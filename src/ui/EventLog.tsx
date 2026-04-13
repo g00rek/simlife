@@ -1,9 +1,23 @@
+import { useState } from 'react';
 import type { LogEntry, LogEventType } from '../engine/types';
 import { TICKS_PER_YEAR } from '../engine/types';
 
 interface EventLogProps {
   log: LogEntry[];
 }
+
+// Category groups — each filter button shows a subset of event types.
+type Category = 'all' | 'food' | 'life' | 'combat' | 'build';
+const CATEGORY_TYPES: Record<Category, LogEventType[] | 'all'> = {
+  all:    'all',
+  food:   ['hunt', 'gather', 'chop'],                       // resource gathering
+  life:   ['birth', 'death', 'pregnant'],                   // reproduction + mortality
+  combat: ['fight', 'train'],                               // combat + sparring
+  build:  ['build_start', 'build_done', 'house_claimed'],   // housing
+};
+const CATEGORY_LABEL: Record<Category, string> = {
+  all: 'All', food: 'Food', life: 'Life', combat: 'Combat', build: 'Build',
+};
 
 function ageYears(ageTicks: number): number {
   return Math.floor(ageTicks / TICKS_PER_YEAR);
@@ -13,7 +27,6 @@ function causeLabel(cause?: string): string {
   switch (cause) {
     case 'old_age': return 'old age';
     case 'starvation': return 'starvation';
-    case 'cold': return 'cold';
     case 'fight': return 'combat';
     case 'childbirth': return 'childbirth';
     default: return '';
@@ -81,13 +94,32 @@ function formatEntry(entry: LogEntry): string {
 }
 
 export function EventLog({ log }: EventLogProps) {
-  const recent = log.slice(-50).reverse();
+  const [category, setCategory] = useState<Category>('all');
+  const allowed = CATEGORY_TYPES[category];
+  const filtered = allowed === 'all' ? log : log.filter(e => allowed.includes(e.type));
+  const recent = filtered.slice(-50).reverse();
 
   return (
     <div style={panelStyle}>
       <div style={headerStyle}>
         <span>Event Log</span>
-        <span style={{ color: '#555' }}>{log.length} events</span>
+        <span style={{ color: '#555' }}>{filtered.length}/{log.length}</span>
+      </div>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
+        {(Object.keys(CATEGORY_LABEL) as Category[]).map(c => (
+          <button
+            key={c}
+            onClick={() => setCategory(c)}
+            style={{
+              padding: '2px 8px', fontSize: 10, borderRadius: 4,
+              border: '1px solid #2d3346', cursor: 'pointer',
+              background: category === c ? '#3d4361' : 'transparent',
+              color: category === c ? '#e0e0e0' : '#888',
+            }}
+          >
+            {CATEGORY_LABEL[c]}
+          </button>
+        ))}
       </div>
       <div style={scrollStyle}>
         {recent.length === 0 && <div style={{ color: '#555' }}>No events yet</div>}
