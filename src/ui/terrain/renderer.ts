@@ -236,6 +236,7 @@ export interface TerrainRenderOpts {
   tick: number;
   season: Season;
   trees?: Tree[];
+  goldDeposits?: GoldDeposit[];
   grid?: boolean;
   waveDensity?: number;  // 0-100, % of water tiles with waves (default 5)
   grass?: number[][];    // grass food grid for animals
@@ -247,6 +248,7 @@ export function drawTerrain(opts: TerrainRenderOpts) {
   if (opts.trees) {
     drawTreeLayer(opts.ctx, opts.overworld, opts.trees, opts.cellSize, opts.season, opts.biomes);
   }
+  drawGoldLayer(opts.ctx, opts.goldDeposits ?? [], opts.cellSize);
   if (opts.ores) {
     drawMountainLayer(opts.ctx, opts.ores, opts.biomes, opts.gridSize, opts.cellSize);
   }
