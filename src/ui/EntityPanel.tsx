@@ -17,11 +17,12 @@ function fertilityStatus(entity: Entity): FertilityStatus {
   return 'ready to mate';
 }
 
-function carryingColor(type: 'meat' | 'wood' | 'fruit'): string {
+function carryingColor(type: 'meat' | 'wood' | 'fruit' | 'gold'): string {
   switch (type) {
     case 'meat': return '#ff9e64';  // orange — raw meat
     case 'wood': return '#bb9af7';  // purple — wood
     case 'fruit': return '#9ece6a'; // green — fruit
+    case 'gold': return '#e0af68';  // yellow — gold
   }
 }
 
@@ -52,7 +53,7 @@ function formatDuration(ticks: number): string {
 }
 import { ageInYears } from '../engine/world';
 import { buildAIContext, getScores, decideAction } from '../engine/utility-ai';
-import { Axe, CookingPot, GenderFemale, GenderMale, Hammer, House, Leaf, PersonSimpleRun, Sword, Baby } from '@phosphor-icons/react';
+import { Axe, CookingPot, GenderFemale, GenderMale, Hammer, House, Leaf, PersonSimpleRun, Shovel, Sword, Baby } from '@phosphor-icons/react';
 
 interface EntityPanelProps {
   entity: Entity;
@@ -185,6 +186,7 @@ const WORKING_LABEL: Record<Action, ReactNode> = {
   chopping:  <span style={stateIconRowStyle}><Axe size={12} />Chopping</span>,
   building:  <span style={stateIconRowStyle}><Hammer size={12} />Building</span>,
   cooking:   <span style={stateIconRowStyle}><CookingPot size={12} />Cooking</span>,
+  mining:    <span style={stateIconRowStyle}><Shovel size={12} />Mining</span>,
   fighting:  <span style={stateIconRowStyle}><Sword size={12} />Fighting</span>,
 };
 
@@ -194,6 +196,7 @@ const MOVING_LABEL: Record<Purpose, ReactNode> = {
   chop:    <span style={stateIconRowStyle}><Axe size={12} />Going to chop</span>,
   build:   <span style={stateIconRowStyle}><Hammer size={12} />Going to build</span>,
   cook:    <span style={stateIconRowStyle}><CookingPot size={12} />Going to cook</span>,
+  mine:    <span style={stateIconRowStyle}><Shovel size={12} />Going to mine</span>,
   deposit: <span style={stateIconRowStyle}><House size={12} />Going to stockpile</span>,
 };
 

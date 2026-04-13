@@ -9,10 +9,10 @@ export type Gender = 'male' | 'female';
 export type Pace = 'walk' | 'run';
 
 // What the entity intends to do when they arrive at the target tile.
-export type Purpose = 'hunt' | 'gather' | 'chop' | 'build' | 'cook' | 'deposit';
+export type Purpose = 'hunt' | 'gather' | 'chop' | 'build' | 'cook' | 'mine' | 'deposit';
 
 // The in-place action the entity is executing right now. Each has a baseline duration.
-export type Action = 'hunting' | 'gathering' | 'chopping' | 'building' | 'cooking' | 'fighting';
+export type Action = 'hunting' | 'gathering' | 'chopping' | 'building' | 'cooking' | 'mining' | 'fighting';
 
 export type Activity =
   | { kind: 'idle' }
@@ -26,6 +26,7 @@ export const ACTION_DURATION: Record<Action, number> = {
   chopping: 3,
   cooking: 8,
   building: 10,
+  mining: 4,
   fighting: 5,
 };
 
@@ -62,6 +63,7 @@ export interface Village {
   driedFruitStore: number;
   // Warehouse (materials)
   woodStore: number;
+  goldStore: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -111,6 +113,12 @@ export const ECONOMY = {
     // Energy uplift: 3×(50−25) = +75 meat or 3×(35−18) = +51 fruit per batch.
     // Roughly DOUBLES food supply without needing more hunts/gathers.
   },
+  // --- GOLD (from mining mountain deposits) ---
+  gold: {
+    unitsPerMine: 2,         // portions carried home from one mining session
+    depositCapacity: 6,      // portions per deposit (= 3 mining sessions)
+    spawnBase: 3,            // base deposit count on 30×30 (scaled by map area)
+  },
   // --- REPRODUCTION (pregnancy, cooldowns, mortality) ---
   // Cycle math: pregnancyTicks + birthCooldown = ticks per child (best case).
   // TICKS_PER_YEAR = 2400. With current values: 600 + 900 = 1500 = 0.625 year/child.
@@ -149,7 +157,7 @@ export interface Entity {
   pregnancyTimer: number; // > 0 = pregnant
   fatherTraits?: Traits;
   fatherTribe?: TribeId;
-  carrying?: { type: 'meat' | 'wood' | 'fruit'; amount: number };
+  carrying?: { type: 'meat' | 'wood' | 'fruit' | 'gold'; amount: number };
 }
 
 export const MEAT_PORTIONS_PER_HUNT = ECONOMY.meat.unitsPerHunt;
@@ -217,6 +225,13 @@ export interface Tree {
   fruitPortions: number; // harvestable fruit portions (0 = empty, up to TREE_FRUIT_PORTIONS)
 }
 
+export interface GoldDeposit {
+  id: string;
+  position: Position;   // on a mountain tile (impassable)
+  remaining: number;    // portions left; 0 = depleted
+  depletedAt?: number;  // tick when exhausted (for future rendering/cleanup)
+}
+
 export const TREE_FRUIT_PORTIONS = ECONOMY.fruit.treeCapacity;
 
 export const FIGHT_MIN_AGE = 16;
@@ -278,7 +293,7 @@ export type DeathCause = 'old_age' | 'starvation' | 'fight' | 'childbirth';
 
 export type LogEventType =
   | 'birth' | 'death' | 'pregnant'
-  | 'hunt' | 'gather' | 'chop' | 'build_start' | 'build_done'
+  | 'hunt' | 'gather' | 'chop' | 'mine' | 'build_start' | 'build_done'
   | 'fight' | 'house_claimed';
 
 export interface LogEntry {
@@ -302,6 +317,7 @@ export interface WorldState {
   entities: Entity[];
   animals: Animal[];
   trees: Tree[];
+  goldDeposits: GoldDeposit[];
   houses: House[];
   biomes: Biome[][];
   villages: Village[];

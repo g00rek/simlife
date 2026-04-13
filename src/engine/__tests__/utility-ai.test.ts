@@ -34,7 +34,7 @@ function makeContext(overrides: Partial<AIContext> = {}): AIContext {
     stockpile: { x: 5, y: 5 },
     meatStore: 5,
     plantStore: 0,
-    woodStore: 5, cookedMeatStore: 0, driedFruitStore: 0,
+    woodStore: 5, cookedMeatStore: 0, driedFruitStore: 0, goldStore: 0,
   };
   return {
     entity: makeEntity(),
@@ -98,7 +98,7 @@ describe('decideAction gather behavior', () => {
       name: 'Red Tribe',
       meatStore: 5,
       plantStore: 0,
-      woodStore: 5, cookedMeatStore: 0, driedFruitStore: 0,
+      woodStore: 5, cookedMeatStore: 0, driedFruitStore: 0, goldStore: 0,
     };
     const biomes = Array.from({ length: 20 }, () => Array.from({ length: 20 }, () => 'plains' as const));
     const ctx = buildAIContext(

@@ -558,6 +558,7 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     cookedMeatStore: 0,
     driedFruitStore: 0,
     woodStore: scaled(10, gridSize, 5),
+    goldStore: 0,
   }));
 
   // Stockpile tile is plains (no road ring for now)
@@ -672,7 +673,7 @@ export function createWorld(options: CreateWorldOptions): WorldState {
     }
   }
 
-  return { entities, animals, trees, houses: [], biomes, villages, grass, tick: 0, gridSize, log: [] };
+  return { entities, animals, trees, goldDeposits: [], houses: [], biomes, villages, grass, tick: 0, gridSize, log: [] };
 }
 
 // Fighting detection — adult males of different tribes, idle and adjacent, start a fight.
@@ -1011,6 +1012,7 @@ export function tick(state: WorldState): WorldState {
       case 'hunting':   return completeHunting(e, animals, logEvent);
       case 'gathering': return completeGathering(e, trees);
       case 'fighting':  return completeFighting(e);
+      case 'mining':    return { ...e, activity: IDLE }; // TODO: completeMining (Task 3)
     }
   });
 
@@ -1525,5 +1527,5 @@ export function tick(state: WorldState): WorldState {
   });
 
   const fullLog = [...state.log, ...log];
-  return { entities, animals, trees, houses, biomes, villages: updatedVillages, grass, tick: tickNum, gridSize, log: fullLog };
+  return { entities, animals, trees, goldDeposits: state.goldDeposits, houses, biomes, villages: updatedVillages, grass, tick: tickNum, gridSize, log: fullLog };
 }
