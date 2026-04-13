@@ -147,3 +147,33 @@ describe('gold end-to-end', () => {
     expect(state.villages[0].goldStore).toBeGreaterThan(0);
   });
 });
+
+describe('gold depletion', () => {
+  it('mining three times drains a 6-unit deposit to zero', () => {
+    const T = TICKS_PER_YEAR;
+    const biomes = plainsBiomes(10);
+    biomes[5][5] = 'mountain';
+    const world: WorldState = {
+      gridSize: 10, tick: 0, animals: [], trees: [], houses: [],
+      biomes, villages: [{
+        tribe: 0, color: [255, 0, 0], name: 'A', stockpile: { x: 1, y: 1 },
+        meatStore: 999, plantStore: 999, cookedMeatStore: 999, driedFruitStore: 999,
+        woodStore: 999, goldStore: 0,
+      }],
+      grass: emptyGrass(10), log: [],
+      goldDeposits: [{ id: 'g1', position: { x: 5, y: 5 }, remaining: 6 }],
+      entities: [{
+        id: 'm1', name: 'Miner', position: { x: 1, y: 1 }, gender: 'male',
+        activity: { kind: 'idle' },
+        age: 25 * T, maxAge: 100 * T, color: [255, 0, 0],
+        energy: 100, traits: { strength: 50, dexterity: 50, intelligence: 50 },
+        tribe: 0, birthCooldown: 0, pregnancyTimer: 0,
+      }],
+    };
+    let state = world;
+    for (let i = 0; i < 600; i++) state = tick(state);
+    expect(state.goldDeposits[0].remaining).toBe(0);
+    expect(state.goldDeposits[0].depletedAt).toBeDefined();
+    expect(state.villages[0].goldStore).toBe(6);
+  });
+});
