@@ -324,6 +324,7 @@ function depositCarrying(entity: Entity, getVillage: GetVillageFn): Entity {
   if (carrying.type === 'meat') v.meatStore += carrying.amount;
   else if (carrying.type === 'fruit') v.plantStore += carrying.amount;
   else if (carrying.type === 'wood') v.woodStore += carrying.amount;
+  else if (carrying.type === 'gold') v.goldStore += carrying.amount;
   return { ...entity, carrying: undefined };
 }
 
@@ -898,6 +899,7 @@ export function tick(state: WorldState): WorldState {
   // grass: deep copy — mutated each tick (animals graze, regrowth).
   const biomes = state.biomes;
   let trees = [...state.trees];
+  const goldDeposits = state.goldDeposits;
   const grass = state.grass.map(row => [...row]);
   // blockedTiles = static structures that block movement (houses + stockpiles).
   // Entities path AROUND these and stand adjacent (deposit / cook arrival check).
@@ -1088,7 +1090,7 @@ export function tick(state: WorldState): WorldState {
       case 'hunting':   return completeHunting(e, animals, logEvent);
       case 'gathering': return completeGathering(e, trees);
       case 'fighting':  return completeFighting(e);
-      case 'mining':    return completeMining(e, state.goldDeposits, tickNum, logEvent);
+      case 'mining':    return completeMining(e, goldDeposits, tickNum, logEvent);
     }
   });
 
@@ -1163,7 +1165,7 @@ export function tick(state: WorldState): WorldState {
     // Periodic re-evaluation of current travel goal (hysteresis — every RE_EVAL_INTERVAL).
     if (entity.activity.kind === 'moving' && tickNum > 0
         && (tickNum - entity.activity.setTick) % 20 === 0) {
-      const ctx = buildAIContext(entity, updatedVillages, animals, trees, entities, biomes, gridSize, tickNum, houses, state.goldDeposits, pre);
+      const ctx = buildAIContext(entity, updatedVillages, animals, trees, entities, biomes, gridSize, tickNum, houses, goldDeposits, pre);
       const result = shouldReEvaluate(ctx, entity.activity.purpose, entity.activity.setTick, tickNum);
       if (result.interrupt) {
         entity = { ...entity, activity: result.newActivity ?? IDLE };
@@ -1173,7 +1175,7 @@ export function tick(state: WorldState): WorldState {
 
     // No activity → ask AI for a new one.
     if (entity.activity.kind === 'idle') {
-      const ctx = buildAIContext(entity, updatedVillages, animals, trees, entities, biomes, gridSize, tickNum, houses, state.goldDeposits, pre);
+      const ctx = buildAIContext(entity, updatedVillages, animals, trees, entities, biomes, gridSize, tickNum, houses, goldDeposits, pre);
       const action = decideAction(ctx);
       const newActivity = actionToActivity(action, ctx, tickNum);
       if (newActivity) {
@@ -1269,7 +1271,7 @@ export function tick(state: WorldState): WorldState {
         case 'chop':    entity = resolveChopArrival(entity, trees, biomes); break;
         case 'build':   entity = resolveBuildArrival(entity, biomes, gridSize, houses, updatedVillages, getVillage); break;
         case 'cook':    entity = resolveCookArrival(entity, getVillage); break;
-        case 'mine':    entity = resolveMineArrival(entity, state.goldDeposits, biomes); break;
+        case 'mine':    entity = resolveMineArrival(entity, goldDeposits, biomes); break;
         case 'deposit': entity = depositCarrying({ ...entity, activity: IDLE }, getVillage); break;
       }
       entities[idx] = entity;
@@ -1604,5 +1606,5 @@ export function tick(state: WorldState): WorldState {
   });
 
   const fullLog = [...state.log, ...log];
-  return { entities, animals, trees, goldDeposits: state.goldDeposits, houses, biomes, villages: updatedVillages, grass, tick: tickNum, gridSize, log: fullLog };
+  return { entities, animals, trees, goldDeposits, houses, biomes, villages: updatedVillages, grass, tick: tickNum, gridSize, log: fullLog };
 }

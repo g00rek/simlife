@@ -92,3 +92,30 @@ describe('mining flow', () => {
     expect(next.goldDeposits[0].remaining).toBe(4);  // 6 - 2
   });
 });
+
+describe('gold deposit', () => {
+  it('miner carrying gold deposits into village.goldStore on stockpile arrival', () => {
+    const T = TICKS_PER_YEAR;
+    const biomes = plainsBiomes(10);
+    const world: WorldState = {
+      gridSize: 10, tick: 0, animals: [], trees: [], houses: [],
+      biomes, villages: [{
+        tribe: 0, color: [255, 0, 0], name: 'A', stockpile: { x: 2, y: 2 },
+        meatStore: 99, plantStore: 99, cookedMeatStore: 99, driedFruitStore: 99,
+        woodStore: 99, goldStore: 0,
+      }],
+      grass: emptyGrass(10), log: [], goldDeposits: [],
+      entities: [{
+        id: 'm1', name: 'Miner', position: { x: 2, y: 3 }, gender: 'male',
+        activity: { kind: 'moving', purpose: 'deposit', target: { x: 2, y: 2 }, pace: 'walk', setTick: 0 },
+        age: 25 * T, maxAge: 100 * T, color: [255, 0, 0],
+        energy: 80, traits: { strength: 50, dexterity: 50, intelligence: 50 },
+        tribe: 0, birthCooldown: 0, pregnancyTimer: 0,
+        carrying: { type: 'gold', amount: 2 },
+      }],
+    };
+    const next = tick(world);
+    expect(next.villages[0].goldStore).toBe(2);
+    expect(next.entities[0].carrying).toBeUndefined();
+  });
+});
