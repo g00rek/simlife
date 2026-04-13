@@ -119,3 +119,31 @@ describe('gold deposit', () => {
     expect(next.entities[0].carrying).toBeUndefined();
   });
 });
+
+describe('gold end-to-end', () => {
+  it('over many ticks, idle well-fed entity mines gold and deposits it', () => {
+    const T = TICKS_PER_YEAR;
+    const biomes = plainsBiomes(12);
+    biomes[6][6] = 'mountain';
+    const world: WorldState = {
+      gridSize: 12, tick: 0, animals: [], trees: [], houses: [],
+      biomes, villages: [{
+        tribe: 0, color: [255, 0, 0], name: 'A', stockpile: { x: 2, y: 2 },
+        meatStore: 999, plantStore: 999, cookedMeatStore: 999, driedFruitStore: 999,
+        woodStore: 999, goldStore: 0,
+      }],
+      grass: emptyGrass(12), log: [],
+      goldDeposits: [{ id: 'g1', position: { x: 6, y: 6 }, remaining: 6 }],
+      entities: [{
+        id: 'm1', name: 'Miner', position: { x: 2, y: 2 }, gender: 'male',
+        activity: { kind: 'idle' },
+        age: 25 * T, maxAge: 100 * T, color: [255, 0, 0],
+        energy: 100, traits: { strength: 50, dexterity: 50, intelligence: 50 },
+        tribe: 0, birthCooldown: 0, pregnancyTimer: 0,
+      }],
+    };
+    let state = world;
+    for (let i = 0; i < 300; i++) state = tick(state);
+    expect(state.villages[0].goldStore).toBeGreaterThan(0);
+  });
+});
