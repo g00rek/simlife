@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createWorld } from '../world';
 import { ECONOMY } from '../types';
+import { isPassable } from '../biomes';
 
 describe('gold foundation', () => {
   it('fresh world has village.goldStore = 0', () => {
@@ -35,7 +36,7 @@ describe('gold spawning', () => {
         ];
         const anyPassable = nbrs.some(n =>
           n.x >= 0 && n.x < world.gridSize && n.y >= 0 && n.y < world.gridSize
-          && ['plains', 'forest', 'road'].includes(world.biomes[n.y][n.x])
+          && isPassable(world.biomes[n.y][n.x])
         );
         expect(anyPassable).toBe(true);
         expect(d.remaining).toBe(ECONOMY.gold.depositCapacity);
