@@ -473,6 +473,340 @@ export function createWorld(options: CreateWorldOptions): WorldState {
 // starvationContext moved to demography.ts
 // detectInteractions, pheromoneMating, fightWinner moved to interactions.ts
 
+// ── Extracted tick helpers ──────────────────────────────────────────────
+
+/** Pair ex-fighters on same tile; loser may die if combat energy cost was lethal. */
+function resolveFightingDeaths(
+  entities: Entity[],
+  prevEntities: readonly Entity[],
+  gridSize: number,
+  deadIds: Set<string>,
+  logEvent: (e: Entity, type: LogEntry['type'], extra?: { cause?: DeathCause; detail?: string }) => void,
+): void {
+  const exFightersByTile = new Map<number, Entity[]>();
+  for (const e of entities) {
+    if (e.activity.kind !== 'idle') continue;
+    const wasFighting = prevEntities.find(s => s.id === e.id);
+    if (!wasFighting || getAction(wasFighting) !== 'fighting') continue;
+    if (wasFighting.activity.kind === 'working' && wasFighting.activity.ticksLeft > 1) continue;
+    const key = e.position.y * gridSize + e.position.x;
+    const group = exFightersByTile.get(key) ?? [];
+    group.push(e);
+    exFightersByTile.set(key, group);
+  }
+  for (const [, group] of exFightersByTile) {
+    if (group.length < 2) continue;
+    const [a, b] = group;
+    const winner = fightWinner(a, b);
+    const loserId = winner.id === a.id ? b.id : a.id;
+    const loserEntity = winner.id === a.id ? b : a;
+    if (loserEntity.energy - 20 <= 0) {
+      deadIds.add(loserId);
+      logEvent(loserEntity, 'death', { cause: 'fight', detail: `killed by ${winner.name}` });
+    }
+  }
+}
+
+/** Move animals: panic, graze-seek, leash, drift. Returns updated animals array. */
+function moveAnimals(
+  animals: Animal[],
+  entities: Entity[],
+  grass: number[][],
+  biomes: Biome[][],
+  gridSize: number,
+  blockedTiles: Set<string>,
+  herdCentroid: Position | undefined,
+): void {
+  const animalOccupied = new Set<string>();
+  for (const a of animals) animalOccupied.add(`${a.position.x},${a.position.y}`);
+  for (const e of entities) animalOccupied.add(`${e.position.x},${e.position.y}`);
+
+  const fleeRange = RUNTIME_CONFIG.animalFleeRange;
+  const panicDuration = RUNTIME_CONFIG.animalPanicDuration;
+  const LEASH = RUNTIME_CONFIG.herdLeash;
+
+  for (let ai = 0; ai < animals.length; ai++) {
+    const a = animals[ai];
+    let newPos: Position;
+    let skipAntiBacktrack = false;
+
+    const myKey = `${a.position.x},${a.position.y}`;
+    const blockedForAnimal = new Set(blockedTiles);
+    for (const k of animalOccupied) {
+      if (k !== myKey) blockedForAnimal.add(k);
+    }
+
+    // Nearest human — triggers flee if within alertness range
+    let nearestHumanDist = fleeRange + 1;
+    let nearestHumanPos: Position | null = null;
+    for (const e of entities) {
+      const d = manhattan(a.position, e.position);
+      if (d > 0 && d <= fleeRange && d < nearestHumanDist) {
+        nearestHumanDist = d;
+        nearestHumanPos = e.position;
+      }
+    }
+    let panicTicks = a.panicTicks;
+    if (nearestHumanPos && panicTicks <= 0) panicTicks = panicDuration;
+
+    const centroidDist = herdCentroid ? manhattan(a.position, herdCentroid) : 0;
+    const onGrass = (grass[a.position.y]?.[a.position.x] ?? 0) > 0;
+
+    if (panicTicks > 0) {
+      panicTicks--;
+      if (nearestHumanPos) {
+        const dx = a.position.x - nearestHumanPos.x;
+        const dy = a.position.y - nearestHumanPos.y;
+        const primary = Math.abs(dx) >= Math.abs(dy)
+          ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
+          : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
+        const secondary = Math.abs(dx) >= Math.abs(dy)
+          ? { x: a.position.x, y: a.position.y + Math.sign(dy || 1) }
+          : { x: a.position.x + Math.sign(dx || 1), y: a.position.y };
+        newPos = isValidMove(primary, biomes, gridSize, blockedTiles)
+          ? primary
+          : isValidMove(secondary, biomes, gridSize, blockedTiles)
+            ? secondary
+            : a.position;
+        skipAntiBacktrack = true;
+      } else {
+        newPos = a.position;
+      }
+    } else if (onGrass && a.energy < ANIMAL_ENERGY_MAX) {
+      newPos = a.position;
+    } else if (herdCentroid && centroidDist > LEASH) {
+      newPos = stepToward(a.position, herdCentroid, biomes, gridSize, blockedForAnimal);
+      skipAntiBacktrack = true;
+    } else if (!onGrass) {
+      let nearGrass: Position | undefined;
+      let bestDist = Infinity;
+      const SIGHT = 4;
+      for (let dy = -SIGHT; dy <= SIGHT; dy++) {
+        for (let dx = -SIGHT; dx <= SIGHT; dx++) {
+          const nx = a.position.x + dx, ny = a.position.y + dy;
+          if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) continue;
+          if ((grass[ny]?.[nx] ?? 0) <= 0) continue;
+          const d = Math.abs(dx) + Math.abs(dy);
+          if (d > 0 && d < bestDist) { bestDist = d; nearGrass = { x: nx, y: ny }; }
+        }
+      }
+      newPos = nearGrass
+        ? stepToward(a.position, nearGrass, biomes, gridSize, blockedForAnimal)
+        : herdCentroid
+          ? stepToward(a.position, herdCentroid, biomes, gridSize, blockedForAnimal)
+          : a.position;
+    } else {
+      newPos = a.position;
+    }
+
+    if (!skipAntiBacktrack && a.prevPos && newPos !== a.position
+        && newPos.x === a.prevPos.x && newPos.y === a.prevPos.y) {
+      newPos = a.position;
+    }
+
+    const newKey = `${newPos.x},${newPos.y}`;
+    if (newPos !== a.position && animalOccupied.has(newKey)) {
+      newPos = a.position;
+    }
+    const moved = newPos !== a.position;
+    if (moved) {
+      animalOccupied.delete(myKey);
+      animalOccupied.add(newKey);
+    }
+    const nextPrevPos = moved ? a.position : a.prevPos;
+    animals[ai] = {
+      ...a,
+      position: newPos,
+      prevPos: nextPrevPos,
+      reproTimer: Math.max(0, a.reproTimer - 1),
+      panicTicks,
+    };
+  }
+}
+
+/** Animals graze on grass tiles. Mutates both arrays in place. */
+function animalsGraze(animals: Animal[], grass: number[][]): void {
+  for (let i = 0; i < animals.length; i++) {
+    const a = animals[i];
+    const gx = a.position.x, gy = a.position.y;
+    if (grass[gy][gx] > 0 && a.energy < ANIMAL_ENERGY_MAX) {
+      grass[gy][gx]--;
+      animals[i] = { ...a, energy: Math.min(ANIMAL_ENERGY_MAX, a.energy + RUNTIME_CONFIG.grazeEnergy) };
+    }
+  }
+}
+
+/** Reproduce animals — hunger-adjusted cooldown. Pushes babies into animals array. */
+function reproduceAnimals(
+  animals: Animal[],
+  entities: Entity[],
+  villages: Village[],
+  biomes: Biome[][],
+  gridSize: number,
+  genId: (prefix?: string) => string,
+): void {
+  if (animals.length >= RUNTIME_CONFIG.maxHerdSize) return;
+
+  let minDaysOfFood = Infinity;
+  for (const v of villages) {
+    let adults = 0, toddlers = 0;
+    for (const e of entities) {
+      if (e.tribe !== v.tribe) continue;
+      const y = ageInYears(e);
+      if (y >= CHILD_AGE) adults++;
+      else if (y >= ECONOMY.reproduction.infantAgeYears) toddlers++;
+    }
+    const energyPerDay = adults * 2 + toddlers * 2 * ECONOMY.reproduction.childDrainMultiplier;
+    if (energyPerDay <= 0) continue;
+    const stockpileEnergy =
+        v.meatStore         * ECONOMY.meat.energyPerUnit
+      + v.cookedMeatStore   * ECONOMY.cooking.cookedMeatEnergyPerUnit
+      + v.plantStore        * ECONOMY.fruit.energyPerUnit
+      + v.driedFruitStore   * ECONOMY.cooking.driedFruitEnergyPerUnit;
+    const days = stockpileEnergy / energyPerDay;
+    if (days < minDaysOfFood) minDaysOfFood = days;
+  }
+  const hungerMultiplier = minDaysOfFood < 15 ? 0.25
+                          : minDaysOfFood < 30 ? 0.5
+                          : 1.0;
+
+  const babyAnimals: Animal[] = [];
+  const popRatio = animals.length / RUNTIME_CONFIG.maxHerdSize;
+  const reproBase = RUNTIME_CONFIG.reproInterval;
+  const cooldown = Math.round(reproBase * Math.max(0.15, popRatio) * hungerMultiplier);
+  const readyFemales = animals.filter(a => a.gender === 'female' && a.reproTimer === 0 && a.energy >= ANIMAL_REPRO_MIN_ENERGY);
+  for (const female of readyFemales) {
+    if (animals.length + babyAnimals.length >= RUNTIME_CONFIG.maxHerdSize) break;
+    const ns = neighbors(female.position, gridSize).filter(n => isPassable(biomes[n.y][n.x]));
+    if (ns.length === 0) continue;
+    female.reproTimer = cooldown;
+    babyAnimals.push({
+      id: genId('a'),
+      position: ns[Math.floor(Math.random() * ns.length)],
+      gender: Math.random() < 0.5 ? 'male' : 'female',
+      energy: ANIMAL_ENERGY_START,
+      reproTimer: reproBase,
+      panicTicks: 0,
+    });
+  }
+  animals.push(...babyAnimals);
+}
+
+/** Drain animal energy periodically; remove dead. Returns filtered array. */
+function drainAndCullAnimals(animals: Animal[], tickNum: number): Animal[] {
+  return animals.map(a => {
+    if (tickNum % ANIMAL_DRAIN_INTERVAL === 0) {
+      return { ...a, energy: a.energy - ANIMAL_ENERGY_DRAIN };
+    }
+    return a;
+  }).filter(a => a.energy > 0);
+}
+
+/** Spawn migrant animals from map edge when herd population is low. */
+function migrateAnimals(
+  animals: Animal[],
+  biomes: Biome[][],
+  gridSize: number,
+  tickNum: number,
+  genId: (prefix?: string) => string,
+): void {
+  const targetPop = scaled(ANIMAL_COUNT, gridSize, 4);
+  const migrationInterval = animals.length === 0 ? 50 : animals.length < 4 ? 100 : 200;
+  if (animals.length >= targetPop / 2 || tickNum % migrationInterval !== 0) return;
+
+  const edge = Math.random() < 0.5 ? 0 : gridSize - 1;
+  const along = Math.floor(Math.random() * gridSize);
+  const isHorizontal = Math.random() < 0.5;
+  const spawnPos = isHorizontal ? { x: along, y: edge } : { x: edge, y: along };
+  if (!isPassable(biomes[spawnPos.y][spawnPos.x])) return;
+
+  const count = 3 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < count; i++) {
+    const pos = i === 0 ? spawnPos : (() => {
+      for (let a = 0; a < 10; a++) {
+        const p = { x: spawnPos.x + Math.floor(Math.random() * 5) - 2, y: spawnPos.y + Math.floor(Math.random() * 5) - 2 };
+        if (p.x >= 0 && p.x < gridSize && p.y >= 0 && p.y < gridSize && isPassable(biomes[p.y][p.x])) return p;
+      }
+      return spawnPos;
+    })();
+    animals.push({
+      id: genId('a'),
+      position: pos,
+      gender: i < count / 2 ? 'male' : 'female',
+      energy: ANIMAL_ENERGY_START,
+      reproTimer: 0,
+      panicTicks: 0,
+    });
+  }
+}
+
+/** Seasonal fruit tree cycle: winter drops, spring/summer fruiting. */
+function updateTreeSeasons(trees: Tree[], currentSeason: number, isWinter: boolean): Tree[] {
+  const isSpring = currentSeason === 0;
+  const isSummer = currentSeason === 1;
+  return trees.map(t => {
+    if (t.chopped) return t;
+    if (isWinter && t.hasFruit) {
+      if (Math.random() < 0.02) return { ...t, fruitPortions: 0, hasFruit: false };
+    }
+    if (isSpring && t.fruiting && !t.hasFruit) {
+      if (Math.random() < 0.003) return { ...t, fruitPortions: ECONOMY.fruit.treeCapacity, hasFruit: true };
+    }
+    if (isSummer && t.fruiting && !t.hasFruit) {
+      if (Math.random() < 0.02) return { ...t, fruitPortions: ECONOMY.fruit.treeCapacity, hasFruit: true };
+    }
+    return t;
+  });
+}
+
+/** Grass regrowth on plains tiles (not near water). Mutates grass grid. */
+function regrowGrass(grass: number[][], biomes: Biome[][], gridSize: number): void {
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      if (biomes[y][x] !== 'plains' || grass[y][x] >= GRASS_MAX_PER_TILE) continue;
+      let shore = false;
+      for (let dy = -1; dy <= 1 && !shore; dy++)
+        for (let dx = -1; dx <= 1 && !shore; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && biomes[ny][nx] === 'water') shore = true;
+        }
+      if (shore) continue;
+      if (Math.random() < RUNTIME_CONFIG.grassGrowChance) grass[y][x]++;
+    }
+  }
+}
+
+/** Move children: infants snap to mother; toddlers wander within radius. */
+function moveChildren(
+  entities: Entity[],
+  villages: Village[],
+  biomes: Biome[][],
+  gridSize: number,
+  blockedTiles: Set<string>,
+): Entity[] {
+  const CHILD_WANDER_RADIUS = 3;
+  return entities.map(e => {
+    if (!isChild(e)) return e;
+    const mother = e.motherId ? entities.find(m => m.id === e.motherId) : undefined;
+    const target: Position | undefined = mother?.position
+      ?? villages[e.tribe]?.stockpile;
+    if (!target) return e;
+    if (isInfant(e)) {
+      return { ...e, position: { ...target }, activity: IDLE };
+    }
+    const d = manhattan(e.position, target);
+    if (d > CHILD_WANDER_RADIUS) {
+      const back = stepToward(e.position, target, biomes, gridSize, blockedTiles);
+      if (!back || (back.x === e.position.x && back.y === e.position.y)) return e;
+      return { ...e, position: back, activity: IDLE };
+    }
+    if (Math.random() < 0.3) return e;
+    const step = randomStepBiome(e.position, gridSize, biomes, blockedTiles);
+    if (step.x === e.position.x && step.y === e.position.y) return e;
+    return { ...e, position: step, activity: IDLE };
+  });
+}
+
 // --- Main tick ---
 
 export function tick(state: WorldState): WorldState {
@@ -583,35 +917,8 @@ export function tick(state: WorldState): WorldState {
     }
   });
 
-  // Fighting death resolution: pair fighters on the same tile, weighted by strength.
-  // Loser who's still standing after completeFighting's -20 gets another -20 if they lost.
-  // Simple: if two idle ex-fighters on same tile with energy near 0, weakest one dies.
-  {
-    const exFightersByTile = new Map<number, Entity[]>();
-    for (const e of entities) {
-      // ex-fighters are idle now (just returned from fighting), energy hit -20
-      if (e.activity.kind !== 'idle') continue;
-      const wasFighting = state.entities.find(s => s.id === e.id);
-      if (!wasFighting || getAction(wasFighting) !== 'fighting') continue;
-      if (wasFighting.activity.kind === 'working' && wasFighting.activity.ticksLeft > 1) continue;
-      const key = e.position.y * gridSize + e.position.x;
-      const group = exFightersByTile.get(key) ?? [];
-      group.push(e);
-      exFightersByTile.set(key, group);
-    }
-    for (const [, group] of exFightersByTile) {
-      if (group.length < 2) continue;
-      const [a, b] = group;
-      const winner = fightWinner(a, b);
-      const loserId = winner.id === a.id ? b.id : a.id;
-      const loserEntity = winner.id === a.id ? b : a;
-      // Extra -20 on loser brings total to -40 from combat
-      if (loserEntity.energy - 20 <= 0) {
-        deadIds.add(loserId);
-        logEvent(loserEntity, 'death', { cause: 'fight', detail: `killed by ${winner.name}` });
-      }
-    }
-  }
+  // Fighting death resolution — extracted helper
+  resolveFightingDeaths(entities, state.entities, gridSize, deadIds, logEvent);
 
   for (const deadId of deadIds) {
     for (const h of houses) {
@@ -778,280 +1085,21 @@ export function tick(state: WorldState): WorldState {
   // --- Step 4: Detect interactions (post-movement) ---
   entities = detectInteractions(entities, gridSize, updatedVillages, houses, log, tickNum);
 
-  // --- Step 5: Move animals (AFTER humans so hunters can catch them) ---
-  // Single-herd model: centroid = mean of all animal positions. Shifts naturally when
-  // animals flee or drift. There's no alpha; the herd follows its own center of mass.
+  // --- Step 5: Animal lifecycle (move, graze, reproduce, drain, migrate) ---
   const herdCentroid: Position | undefined = animals.length > 0 ? (() => {
     let sx = 0, sy = 0;
     for (const a of animals) { sx += a.position.x; sy += a.position.y; }
     return { x: Math.round(sx / animals.length), y: Math.round(sy / animals.length) };
   })() : undefined;
+  moveAnimals(animals, entities, grass, biomes, gridSize, blockedTiles, herdCentroid);
+  animalsGraze(animals, grass);
+  reproduceAnimals(animals, entities, updatedVillages, biomes, gridSize, generateId);
+  animals = drainAndCullAnimals(animals, tickNum);
+  migrateAnimals(animals, biomes, gridSize, tickNum, generateId);
 
-  // Occupancy for animals: one animal per tile, also block entity tiles.
-  const animalOccupied = new Set<string>();
-  for (const a of animals) animalOccupied.add(`${a.position.x},${a.position.y}`);
-  for (const e of entities) animalOccupied.add(`${e.position.x},${e.position.y}`);
-
-  const fleeRange = RUNTIME_CONFIG.animalFleeRange;
-  const panicDuration = RUNTIME_CONFIG.animalPanicDuration;
-  const LEASH = RUNTIME_CONFIG.herdLeash;
-
-  for (let ai = 0; ai < animals.length; ai++) {
-    const a = animals[ai];
-    let newPos: Position;
-    let skipAntiBacktrack = false;
-
-    const myKey = `${a.position.x},${a.position.y}`;
-    const blockedForAnimal = new Set(blockedTiles);
-    for (const k of animalOccupied) {
-      if (k !== myKey) blockedForAnimal.add(k);
-    }
-
-    // Nearest human — triggers flee if within alertness range
-    let nearestHumanDist = fleeRange + 1;
-    let nearestHumanPos: Position | null = null;
-    for (const e of entities) {
-      const d = manhattan(a.position, e.position);
-      if (d > 0 && d <= fleeRange && d < nearestHumanDist) {
-        nearestHumanDist = d;
-        nearestHumanPos = e.position;
-      }
-    }
-    let panicTicks = a.panicTicks;
-    if (nearestHumanPos && panicTicks <= 0) panicTicks = panicDuration;
-
-    // ── Priority decision tree ──
-    //   1. PANIC    — flee from nearest human
-    //   2. GRAZE    — on grass + hungry → stay (Step 5a eats)
-    //   3. LEASH    — too far from centroid → head back
-    //   4. DRIFT    — bare tile → step to nearest grass (else toward centroid)
-    //   5. REST     — else stay
-    const centroidDist = herdCentroid ? manhattan(a.position, herdCentroid) : 0;
-    const onGrass = (grass[a.position.y]?.[a.position.x] ?? 0) > 0;
-
-    if (panicTicks > 0) {
-      panicTicks--;
-      // Always flee 1 tile per tick while panicking — no skipped ticks, no visual "teleport".
-      // If the straight-away tile is blocked, try the perpendicular axis before giving up.
-      if (nearestHumanPos) {
-        const dx = a.position.x - nearestHumanPos.x;
-        const dy = a.position.y - nearestHumanPos.y;
-        const primary = Math.abs(dx) >= Math.abs(dy)
-          ? { x: a.position.x + Math.sign(dx || 1), y: a.position.y }
-          : { x: a.position.x, y: a.position.y + Math.sign(dy || 1) };
-        const secondary = Math.abs(dx) >= Math.abs(dy)
-          ? { x: a.position.x, y: a.position.y + Math.sign(dy || 1) }
-          : { x: a.position.x + Math.sign(dx || 1), y: a.position.y };
-        newPos = isValidMove(primary, biomes, gridSize, blockedTiles)
-          ? primary
-          : isValidMove(secondary, biomes, gridSize, blockedTiles)
-            ? secondary
-            : a.position;
-        skipAntiBacktrack = true;
-      } else {
-        newPos = a.position;
-      }
-    } else if (onGrass && a.energy < ANIMAL_ENERGY_MAX) {
-      newPos = a.position;
-    } else if (herdCentroid && centroidDist > LEASH) {
-      newPos = stepToward(a.position, herdCentroid, biomes, gridSize, blockedForAnimal);
-      skipAntiBacktrack = true;
-    } else if (!onGrass) {
-      // Drift to nearest grass within sight; fall back to centroid if no grass visible.
-      let nearGrass: Position | undefined;
-      let bestDist = Infinity;
-      const SIGHT = 4;
-      for (let dy = -SIGHT; dy <= SIGHT; dy++) {
-        for (let dx = -SIGHT; dx <= SIGHT; dx++) {
-          const nx = a.position.x + dx, ny = a.position.y + dy;
-          if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) continue;
-          if ((grass[ny]?.[nx] ?? 0) <= 0) continue;
-          const d = Math.abs(dx) + Math.abs(dy);
-          if (d > 0 && d < bestDist) { bestDist = d; nearGrass = { x: nx, y: ny }; }
-        }
-      }
-      newPos = nearGrass
-        ? stepToward(a.position, nearGrass, biomes, gridSize, blockedForAnimal)
-        : herdCentroid
-          ? stepToward(a.position, herdCentroid, biomes, gridSize, blockedForAnimal)
-          : a.position;
-    } else {
-      newPos = a.position;
-    }
-
-    // Anti-backtrack — don't bounce back to the prev tile (except for panic / leash).
-    if (!skipAntiBacktrack && a.prevPos && newPos !== a.position
-        && newPos.x === a.prevPos.x && newPos.y === a.prevPos.y) {
-      newPos = a.position;
-    }
-
-    // Commit move only if target tile free
-    const newKey = `${newPos.x},${newPos.y}`;
-    if (newPos !== a.position && animalOccupied.has(newKey)) {
-      newPos = a.position;
-    }
-    const moved = newPos !== a.position;
-    if (moved) {
-      animalOccupied.delete(myKey);
-      animalOccupied.add(newKey);
-    }
-    const nextPrevPos = moved ? a.position : a.prevPos;
-    animals[ai] = {
-      ...a,
-      position: newPos,
-      prevPos: nextPrevPos,
-      reproTimer: Math.max(0, a.reproTimer - 1),
-      panicTicks,
-    };
-  }
-
-  // --- Step 5a: Animals graze on grass ---
-  for (let i = 0; i < animals.length; i++) {
-    const a = animals[i];
-    const gx = a.position.x, gy = a.position.y;
-    if (grass[gy][gx] > 0 && a.energy < ANIMAL_ENERGY_MAX) {
-      grass[gy][gx]--;
-      animals[i] = { ...a, energy: Math.min(ANIMAL_ENERGY_MAX, a.energy + RUNTIME_CONFIG.grazeEnergy) };
-    }
-  }
-
-  // --- Step 5b: Reproduce animals (simplified — female timer only, no mate needed) ---
-  // Each well-fed female spawns a baby when her cooldown hits 0. maxHerdSize is the
-  // HARD CAP — when reached, reproduction pauses. Fertility is boosted when any tribe
-  // is running low on food (hungry humans → herd breeds faster → more food available).
-  if (animals.length < RUNTIME_CONFIG.maxHerdSize) {
-    // Tribe hunger signal — minimum days-of-food across villages. Fewer = more urgent boost.
-    let minDaysOfFood = Infinity;
-    for (const v of updatedVillages) {
-      let adults = 0, toddlers = 0;
-      for (const e of entities) {
-        if (e.tribe !== v.tribe) continue;
-        const y = ageInYears(e);
-        if (y >= CHILD_AGE) adults++;
-        else if (y >= ECONOMY.reproduction.infantAgeYears) toddlers++;
-      }
-      const energyPerDay = adults * 2 + toddlers * 2 * ECONOMY.reproduction.childDrainMultiplier;
-      if (energyPerDay <= 0) continue;
-      const stockpileEnergy =
-          v.meatStore         * ECONOMY.meat.energyPerUnit
-        + v.cookedMeatStore   * ECONOMY.cooking.cookedMeatEnergyPerUnit
-        + v.plantStore        * ECONOMY.fruit.energyPerUnit
-        + v.driedFruitStore   * ECONOMY.cooking.driedFruitEnergyPerUnit;
-      const days = stockpileEnergy / energyPerDay;
-      if (days < minDaysOfFood) minDaysOfFood = days;
-    }
-    // Hunger → shorter cooldown. <15 days → 4× faster, <30 → 2× faster, else baseline.
-    const hungerMultiplier = minDaysOfFood < 15 ? 0.25
-                            : minDaysOfFood < 30 ? 0.5
-                            : 1.0;
-
-    const babyAnimals: Animal[] = [];
-    const popRatio = animals.length / RUNTIME_CONFIG.maxHerdSize;
-    const reproBase = RUNTIME_CONFIG.reproInterval;
-    const cooldown = Math.round(reproBase * Math.max(0.15, popRatio) * hungerMultiplier);
-    const readyFemales = animals.filter(a => a.gender === 'female' && a.reproTimer === 0 && a.energy >= ANIMAL_REPRO_MIN_ENERGY);
-    for (const female of readyFemales) {
-      if (animals.length + babyAnimals.length >= RUNTIME_CONFIG.maxHerdSize) break;
-      const ns = neighbors(female.position, gridSize).filter(n => isPassable(biomes[n.y][n.x]));
-      if (ns.length === 0) continue;
-      female.reproTimer = cooldown;
-      babyAnimals.push({
-        id: generateId('a'),
-        position: ns[Math.floor(Math.random() * ns.length)],
-        gender: Math.random() < 0.5 ? 'male' : 'female',
-        energy: ANIMAL_ENERGY_START,
-        reproTimer: reproBase,
-        panicTicks: 0,
-      });
-    }
-    animals.push(...babyAnimals);
-  }
-
-  // --- Step 5c: Animal energy drain and death ---
-  animals = animals.map(a => {
-    if (tickNum % ANIMAL_DRAIN_INTERVAL === 0) {
-      return { ...a, energy: a.energy - ANIMAL_ENERGY_DRAIN };
-    }
-    return a;
-  }).filter(a => a.energy > 0);
-
-  // --- Step 5e: Animal migration — new animals arrive when population is low ---
-  // Single-herd world: migrants join the existing alpha. If no herd exists at all
-  // (extinction event), the first migrant becomes the new alpha.
-  {
-    const targetPop = scaled(ANIMAL_COUNT, gridSize, 4);
-    const migrationInterval = animals.length === 0 ? 50 : animals.length < 4 ? 100 : 200;
-    if (animals.length < targetPop / 2 && tickNum % migrationInterval === 0) {
-      const edge = Math.random() < 0.5 ? 0 : gridSize - 1;
-      const along = Math.floor(Math.random() * gridSize);
-      const isHorizontal = Math.random() < 0.5;
-      const spawnPos = isHorizontal ? { x: along, y: edge } : { x: edge, y: along };
-      if (isPassable(biomes[spawnPos.y][spawnPos.x])) {
-        const count = 3 + Math.floor(Math.random() * 3); // 3-5 migrants
-        for (let i = 0; i < count; i++) {
-          const pos = i === 0 ? spawnPos : (() => {
-            for (let a = 0; a < 10; a++) {
-              const p = { x: spawnPos.x + Math.floor(Math.random() * 5) - 2, y: spawnPos.y + Math.floor(Math.random() * 5) - 2 };
-              if (p.x >= 0 && p.x < gridSize && p.y >= 0 && p.y < gridSize && isPassable(biomes[p.y][p.x])) return p;
-            }
-            return spawnPos;
-          })();
-          animals.push({
-            id: generateId('a'),
-            position: pos,
-            gender: i < count / 2 ? 'male' : 'female',
-            energy: ANIMAL_ENERGY_START,
-            reproTimer: 0,
-            panicTicks: 0,
-          });
-        }
-      }
-    }
-  }
-
-  // --- Step 6: Gradual seasonal fruit tree cycle ---
-  // Each tick, individual trees have a small chance to transition.
-  // Over a full season (~600 ticks), virtually all trees will have changed.
-  // isWinter computed earlier (above Step 0) for the homeless-in-winter drain penalty.
-  const isSpring = currentSeason === 0;
-  const isSummer = currentSeason === 1;
-
-  trees = trees.map(t => {
-    if (t.chopped) return t;
-
-    if (isWinter && t.hasFruit) {
-      // Gradually lose fruit: ~2% per tick → ~95% bare by end of winter
-      if (Math.random() < 0.02) return { ...t, fruitPortions: 0, hasFruit: false };
-    }
-
-    if (isSpring && t.fruiting && !t.hasFruit) {
-      // Some trees fruit early: ~0.3% per tick → ~40% by end of spring
-      if (Math.random() < 0.003) return { ...t, fruitPortions: ECONOMY.fruit.treeCapacity, hasFruit: true };
-    }
-
-    if (isSummer && t.fruiting && !t.hasFruit) {
-      // Most trees fruit: ~2% per tick → virtually all by mid-summer
-      if (Math.random() < 0.02) return { ...t, fruitPortions: ECONOMY.fruit.treeCapacity, hasFruit: true };
-    }
-
-    return t;
-  });
-
-  // --- Grass regrowth on plains (not near water/shore) ---
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (biomes[y][x] !== 'plains' || grass[y][x] >= GRASS_MAX_PER_TILE) continue;
-      // Skip tiles adjacent to water
-      let shore = false;
-      for (let dy = -1; dy <= 1 && !shore; dy++)
-        for (let dx = -1; dx <= 1 && !shore; dx++) {
-          const nx = x + dx, ny = y + dy;
-          if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && biomes[ny][nx] === 'water') shore = true;
-        }
-      if (shore) continue;
-      if (Math.random() < RUNTIME_CONFIG.grassGrowChance) grass[y][x]++;
-    }
-  }
+  // --- Step 6: Seasonal tree cycle + grass regrowth ---
+  trees = updateTreeSeasons(trees, currentSeason, isWinter);
+  regrowGrass(grass, biomes, gridSize);
 
   // --- Step 7: Pheromone mating (every tick) ---
   entities = pheromoneMating(entities, updatedVillages, houses, log, tickNum);
@@ -1067,32 +1115,8 @@ export function tick(state: WorldState): WorldState {
     }
   }
 
-  // --- Step 8: Children stay around mother (end-of-tick, after all adult movement).
-  //   Infants (< 1yr) CARRIED — snap to mother's tile.
-  //   Toddlers (1..CHILD_AGE) play randomly, but if they wander beyond CHILD_WANDER_RADIUS
-  //   they take one step back toward mother. Orphans (no mother) drift to stockpile.
-  const CHILD_WANDER_RADIUS = 3;
-  entities = entities.map(e => {
-    if (!isChild(e)) return e;
-    const mother = e.motherId ? entities.find(m => m.id === e.motherId) : undefined;
-    const target: Position | undefined = mother?.position
-      ?? updatedVillages[e.tribe]?.stockpile;
-    if (!target) return e;
-    if (isInfant(e)) {
-      return { ...e, position: { ...target }, activity: IDLE };
-    }
-    const d = manhattan(e.position, target);
-    if (d > CHILD_WANDER_RADIUS) {
-      const back = stepToward(e.position, target, biomes, gridSize, blockedTiles);
-      if (!back || (back.x === e.position.x && back.y === e.position.y)) return e;
-      return { ...e, position: back, activity: IDLE };
-    }
-    // Within radius — random playful step. Occasionally (30%) stay put.
-    if (Math.random() < 0.3) return e;
-    const step = randomStepBiome(e.position, gridSize, biomes, blockedTiles);
-    if (step.x === e.position.x && step.y === e.position.y) return e;
-    return { ...e, position: step, activity: IDLE };
-  });
+  // --- Step 8: Children follow mothers ---
+  entities = moveChildren(entities, updatedVillages, biomes, gridSize, blockedTiles);
 
   const fullLog = [...state.log, ...log];
   return { entities, animals, trees, goldDeposits, houses, biomes, villages: updatedVillages, grass, tick: tickNum, gridSize, log: fullLog };
