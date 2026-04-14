@@ -17,6 +17,7 @@ import { manhattan, chebyshev } from './geometry';
 import type { BiomeGenParams } from './biomes';
 import { decideAction, buildAIContext, actionToActivity, shouldReEvaluate, precomputeContext } from './utility-ai';
 import { randomName } from './names';
+import { applyEnergyDrain, eatFromCarrying, eatFromStockpile } from './metabolism';
 
 interface CreateWorldOptions {
   gridSize: number;
@@ -46,10 +47,6 @@ export function ageInYears(e: Entity): number {
 function isReproductive(e: Entity): boolean {
   const years = ageInYears(e);
   return years >= MIN_REPRODUCTIVE_AGE && years <= MAX_REPRODUCTIVE_AGE;
-}
-
-function isHungry(e: Entity): boolean {
-  return e.energy < ECONOMY.metabolism.hungerThreshold;
 }
 
 function isChild(e: Entity): boolean {
@@ -916,7 +913,7 @@ export function tick(state: WorldState): WorldState {
   const currentSeason = Math.floor(currentMonth / 3);
   const isWinter = currentSeason === 3;
 
-  // --- Step 0: Age, energy drain, eat meat if hungry, remove dead ---
+  // --- Step 0: Age, energy drain, eat if hungry, remove dead ---
   const aged: Entity[] = state.entities.map(e => {
     const a = {
       ...e,
@@ -924,45 +921,16 @@ export function tick(state: WorldState): WorldState {
       birthCooldown: Math.max(0, e.birthCooldown - 1),
       pregnancyTimer: Math.max(0, e.pregnancyTimer - 1),
     };
-    // Metabolism:
-    //   infants (< infantAgeYears): breastfed — no drain, no eating
-    //   toddlers (infantAge..CHILD_AGE): partial drain (childDrainMultiplier), can eat
-    //   adults (CHILD_AGE+): full drain, full eating
-    //   homeless in winter: 2× drain (cold exposure — incentive to build houses in time)
-    if (!isInfant(a) && a.age % ECONOMY.metabolism.drainInterval === 0) {
-      const baseDrain = 1;
-      const hungerMod = isHungry(a) ? 0.5 : 1.0;
-      const ageMod = isChild(a) ? ECONOMY.reproduction.childDrainMultiplier : 1.0;
-      const winterMod = (isWinter && !a.homeId) ? 2.0 : 1.0;
-      a.energy = Math.max(0, a.energy - baseDrain * hungerMod * ageMod * winterMod);
-    }
-    // Hungry → eat from carrying first, then stockpile. Infants don't eat external food.
-    if (isHungry(a) && !isInfant(a)) {
-      let fed = false;
-      // Eat from what you're carrying
-      if (a.carrying && a.carrying.amount > 0) {
-        const energyGain = a.carrying.type === 'meat' ? ECONOMY.meat.energyPerUnit : a.carrying.type === 'fruit' ? ECONOMY.fruit.energyPerUnit : 0;
-        if (energyGain > 0) {
-          a.carrying = { ...a.carrying, amount: a.carrying.amount - 1 };
-          if (a.carrying.amount <= 0) a.carrying = undefined;
-          a.energy = Math.min(ECONOMY.metabolism.energyMax, a.energy + energyGain);
-          fed = true;
-        }
-      }
-      // Eat from village stockpile if in village zone. Prefer cooked (higher energy) over raw.
-      if (!fed) {
-        const myV = getVillage(a.tribe);
-        if (myV && isInVillage(a.position, a.tribe, myV, houses)) {
-          if (myV.cookedMeatStore > 0) {
-            myV.cookedMeatStore -= 1; a.energy = Math.min(ECONOMY.metabolism.energyMax, a.energy + ECONOMY.cooking.cookedMeatEnergyPerUnit); fed = true;
-          } else if (myV.driedFruitStore > 0) {
-            myV.driedFruitStore -= 1; a.energy = Math.min(ECONOMY.metabolism.energyMax, a.energy + ECONOMY.cooking.driedFruitEnergyPerUnit); fed = true;
-          } else if (myV.meatStore > 0) {
-            myV.meatStore -= 1; a.energy = Math.min(ECONOMY.metabolism.energyMax, a.energy + ECONOMY.meat.energyPerUnit); fed = true;
-          } else if (myV.plantStore > 0) {
-            myV.plantStore -= 1; a.energy = Math.min(ECONOMY.metabolism.energyMax, a.energy + ECONOMY.fruit.energyPerUnit); fed = true;
-          }
-        }
+    // Metabolism (see metabolism.ts for details):
+    //   infants: no drain, no eating. children: 25% drain. adults: full drain.
+    //   homeless in winter: 2× drain.
+    applyEnergyDrain(a, isWinter);
+    // Hungry → eat from carrying first, then village stockpile.
+    if (!eatFromCarrying(a)) {
+      const myV = getVillage(a.tribe);
+      if (myV) {
+        const inZone = isInVillage(a.position, a.tribe, myV, houses);
+        eatFromStockpile(a, myV, inZone);
       }
     }
     return a;
