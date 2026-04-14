@@ -586,6 +586,15 @@ function moveAnimals(
     const centroidDist = herdCentroid ? manhattan(a.position, herdCentroid) : 0;
     const onGrass = (grass[a.position.y]?.[a.position.x] ?? 0) > 0;
 
+    // ── Animal priority tree ──
+    //   1. PANIC — flee from nearest human (overrides everything)
+    //   2. GRAZE — standing on grass + not full → stay and eat
+    //   3. FORAGE — hungry + not on grass → find nearest grass (wider sight when starving)
+    //   4. LEASH — too far from herd centroid → head back
+    //   5. DRIFT — not on grass, not hungry → casual grass-seeking or centroid drift
+    //   6. REST — stay
+    const hungry = a.energy < ANIMAL_ENERGY_MAX * 0.6;
+
     if (panicTicks > 0) {
       panicTicks--;
       if (nearestHumanPos) {
@@ -608,10 +617,36 @@ function moveAnimals(
       }
     } else if (onGrass && a.energy < ANIMAL_ENERGY_MAX) {
       newPos = a.position;
+    } else if (hungry && !onGrass) {
+      // Hungry animals look for food BEFORE obeying herd leash — survival > cohesion.
+      // Wider sight when starving so they can find distant grass patches.
+      const sight = a.energy < ANIMAL_ENERGY_MAX * 0.3 ? 8 : 6;
+      let nearGrass: Position | undefined;
+      let bestDist = Infinity;
+      for (let dy = -sight; dy <= sight; dy++) {
+        for (let dx = -sight; dx <= sight; dx++) {
+          const nx = a.position.x + dx, ny = a.position.y + dy;
+          if (nx < 0 || nx >= gridSize || ny < 0 || ny >= gridSize) continue;
+          if ((grass[ny]?.[nx] ?? 0) <= 0) continue;
+          const d = Math.abs(dx) + Math.abs(dy);
+          if (d > 0 && d < bestDist) { bestDist = d; nearGrass = { x: nx, y: ny }; }
+        }
+      }
+      if (nearGrass) {
+        newPos = stepToward(a.position, nearGrass, biomes, gridSize, blockedForAnimal);
+        skipAntiBacktrack = true;
+      } else if (herdCentroid) {
+        // No grass visible even with wider sight — drift toward centroid (herd knows best)
+        newPos = stepToward(a.position, herdCentroid, biomes, gridSize, blockedForAnimal);
+        skipAntiBacktrack = true;
+      } else {
+        newPos = a.position;
+      }
     } else if (herdCentroid && centroidDist > LEASH) {
       newPos = stepToward(a.position, herdCentroid, biomes, gridSize, blockedForAnimal);
       skipAntiBacktrack = true;
     } else if (!onGrass) {
+      // Not hungry, just casually looking for a grazing spot
       let nearGrass: Position | undefined;
       let bestDist = Infinity;
       const SIGHT = 4;
