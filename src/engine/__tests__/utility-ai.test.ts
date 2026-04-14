@@ -265,13 +265,13 @@ describe('scoreMineGold', () => {
     expect(getScores(ctx).mine ?? 0).toBe(0);
   });
 
-  it('is 0 when daysOfFood is below comfort (30)', () => {
+  it('still mines when food is low (reduced score 0.1)', () => {
     const ctx = makeContext({
       entity: makeEntity({ gender: 'male' }),
       nearestGoldDeposit: { pos: { x: 7, y: 5 }, dist: 2 },
       daysOfFood: 10,
     });
-    expect(getScores(ctx).mine ?? 0).toBe(0);
+    expect(getScores(ctx).mine).toBeCloseTo(0.1);
   });
 
   it('is > 0 when food is comfortable and a deposit is in sight', () => {

@@ -298,16 +298,15 @@ function scoreChopWood(ctx: AIContext): number {
   return woodNeed * 0.95;
 }
 
-// Gold mining is a "free time" activity — runs when the tribe is fed and has shelter
-// in progress. Never beats survival/build/food-work. Produces pure wealth (for future
-// mercenary hire + inter-tribe rivalry pressure).
+// Gold mining — always active while gold exists on the map. Never idle when there's
+// ore to dig. Scales with food security: minimal when hungry, strong when fed.
+// Always beats play (0.04), never beats survival/build/urgent-food.
 function scoreMineGold(ctx: AIContext): number {
   if (ageInYears(ctx.entity) < CHILD_AGE) return 0;
   if (!ctx.village) return 0;
   if (ctx.entity.carrying && ctx.entity.carrying.amount > 0) return 0;
   if (!ctx.nearestGoldDeposit) return 0;
-  // Only when food is at least comfortable — don't starve the tribe to chase wealth.
-  if (ctx.daysOfFood < FOOD_COMFORT_DAYS) return 0;
+  if (ctx.daysOfFood < FOOD_COMFORT_DAYS) return 0.1;  // mild — loses to food work, beats idle
   if (ctx.daysOfFood < FOOD_SURPLUS_DAYS) return 0.3;
   return 0.5;
 }
@@ -603,13 +602,11 @@ export function buildAIContext(
     }
   }
 
-  // Find nearest gold deposit with remaining ore
-  const GOLD_SENSE = 12; // knowledge of mountain resources within ~12 manhattan tiles
+  // Find nearest gold deposit with remaining ore (global knowledge — gold is always visible)
   let nearestGoldDeposit: AIContext['nearestGoldDeposit'];
   for (const d of goldDeposits) {
     if (d.remaining <= 0) continue;
     const dist = Math.abs(d.position.x - entity.position.x) + Math.abs(d.position.y - entity.position.y);
-    if (dist > GOLD_SENSE) continue; // out of sense range
     if (dist > 0 && (!nearestGoldDeposit || dist < nearestGoldDeposit.dist)) {
       nearestGoldDeposit = { pos: d.position, dist };
     }
