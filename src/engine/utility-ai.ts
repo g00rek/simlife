@@ -9,7 +9,8 @@ import {
   TICKS_PER_YEAR,
   ECONOMY,
 } from './types';
-import { ageInYears, isPregnant, isValidBuildSite } from './world';
+import { ageInYears, isPregnant } from './world';
+import { isValidBuildSite } from './action-resolver';
 import { manhattan, chebyshev } from './geometry';
 
 // Precomputed shared stats — calculated ONCE per tick, reused across all entities.
