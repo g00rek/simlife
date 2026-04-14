@@ -15,6 +15,7 @@ import {
   ECONOMY, RUNTIME_CONFIG,
 } from './types';
 import { generateBiomeGrid, isPassable } from './biomes';
+import { manhattan, chebyshev } from './geometry';
 import type { BiomeGenParams } from './biomes';
 import { decideAction, buildAIContext, actionToActivity, shouldReEvaluate, precomputeContext } from './utility-ai';
 import { randomName } from './names';
@@ -99,13 +100,12 @@ function homePosition(e: Entity, houses: House[]): Position | undefined {
 // chebyshev ≤ VILLAGE_EAT_RANGE from stockpile OR from any tribe house center.
 // This is the zone where entity can eat from village stockpile without physically being at it.
 function isInVillage(pos: Position, tribe: TribeId, village: Village | undefined, houses: House[]): boolean {
-  const cheb = (a: Position, b: Position) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
-  if (village?.stockpile && cheb(pos, village.stockpile) <= VILLAGE_EAT_RANGE) return true;
+  if (village?.stockpile && chebyshev(pos, village.stockpile) <= VILLAGE_EAT_RANGE) return true;
   const hoff = Math.floor(HOUSE_SIZE / 2);
   for (const h of houses) {
     if (h.tribe !== tribe) continue;
     const hc = { x: h.position.x + hoff, y: h.position.y + hoff };
-    if (cheb(pos, hc) <= VILLAGE_EAT_RANGE) return true;
+    if (chebyshev(pos, hc) <= VILLAGE_EAT_RANGE) return true;
   }
   return false;
 }
@@ -405,9 +405,6 @@ function neighbors(p: Position, gridSize: number): Position[] {
   return result;
 }
 
-function manhattan(a: Position, b: Position): number {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-}
 
 // BFS pathfinding — finds shortest path around obstacles (houses, water, mountains, occupied tiles).
 // Returns the FIRST step on the shortest path from `from` to `to`.

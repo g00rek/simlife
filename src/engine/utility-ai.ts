@@ -12,6 +12,7 @@ import {
   ECONOMY,
 } from './types';
 import { ageInYears, isPregnant, isValidBuildSite } from './world';
+import { manhattan, chebyshev } from './geometry';
 
 // Precomputed shared stats — calculated ONCE per tick, reused across all entities.
 // Without this every buildAIContext call iterates entities/animals/houses again.
@@ -235,7 +236,7 @@ function survivalForageAction(ctx: AIContext, survivalScore: number): AIAction |
       const stockpileFood = v.meatStore + v.plantStore + v.cookedMeatStore + v.driedFruitStore;
       if (stockpileFood > 0) {
         candidates.push({
-          dist: Math.abs(sp.x - here.x) + Math.abs(sp.y - here.y),
+          dist: manhattan(sp, here),
           action: { type: 'deposit' },
         });
       }
@@ -496,10 +497,6 @@ export function decideAction(ctx: AIContext): AIAction {
 
 // --- Build context from world state ---
 
-function manhattan(a: Position, b: Position): number {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-}
-
 export function buildAIContext(
   entity: Entity,
   villages: Village[],
@@ -524,15 +521,14 @@ export function buildAIContext(
 
   // inEatZone: chebyshev ≤ VILLAGE_EAT_RANGE from stockpile OR any tribe house center.
   // Matches the passive-eating check in world.ts Step 0b.
-  const cheb = (a: Position, b: Position) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   let inEatZone = false;
   const village0 = villages.find(v => v.tribe === entity.tribe);
-  if (village0?.stockpile && cheb(entity.position, village0.stockpile) <= VILLAGE_EAT_RANGE) {
+  if (village0?.stockpile && chebyshev(entity.position, village0.stockpile) <= VILLAGE_EAT_RANGE) {
     inEatZone = true;
   }
   if (!inEatZone) {
     for (const h of tribeHouses) {
-      if (cheb(entity.position, houseCenter(h)) <= VILLAGE_EAT_RANGE) { inEatZone = true; break; }
+      if (chebyshev(entity.position, houseCenter(h)) <= VILLAGE_EAT_RANGE) { inEatZone = true; break; }
     }
   }
 
@@ -645,7 +641,7 @@ export function buildAIContext(
   if (preBuildSite) {
     nearestBuildSite = {
       pos: preBuildSite,
-      dist: Math.abs(preBuildSite.x - entity.position.x) + Math.abs(preBuildSite.y - entity.position.y),
+      dist: manhattan(preBuildSite, entity.position),
     };
   } else if (!pre && villageNeedsHouses && village?.stockpile) {
     // Fallback compute (only when caller didn't precompute)
@@ -667,7 +663,7 @@ export function buildAIContext(
     if (bestSite) {
       nearestBuildSite = {
         pos: bestSite,
-        dist: Math.abs(bestSite.x - entity.position.x) + Math.abs(bestSite.y - entity.position.y),
+        dist: manhattan(bestSite, entity.position),
       };
     }
   }
